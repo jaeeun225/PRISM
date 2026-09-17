@@ -212,7 +212,7 @@ def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.
         marker=dict(color=point_colors, size=5, opacity=1),
         hovertext=df["tooltip"], hovertemplate="%{hovertext}<extra></extra>",
         hoverlabel=dict(align="left", bgcolor=point_colors, bordercolor=point_borders,
-                        font=dict(size=14, color=point_text_colors)),
+                        font=dict(size=14, color=point_text_colors, family="Georgia, Times New Roman, serif")),
         showlegend=False,
     ))
     if matched.any():
@@ -226,7 +226,7 @@ def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.
                         line=dict(color="#252525", width=2)),
             hovertext=found["tooltip"], hovertemplate="%{hovertext}<extra></extra>",
             hoverlabel=dict(align="left", bgcolor=found_colors, bordercolor=found_borders,
-                            font=dict(size=14, color=found_text_colors)),
+                            font=dict(size=14, color=found_text_colors, family="Georgia, Times New Roman, serif")),
             showlegend=False,
         ))
 
@@ -258,7 +258,7 @@ def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.
         showlegend=False,
         hovermode="closest",
         hoverdistance=20,
-        hoverlabel=dict(align="left", font=dict(size=14)),
+        hoverlabel=dict(align="left", font=dict(size=14, family="Georgia, Times New Roman, serif")),
         dragmode="zoom",
         uirevision="prism-scent-map",
         xaxis=dict(visible=False, range=[-1.45, 1.45], constrain="domain"),
@@ -324,8 +324,68 @@ def render_accord_chips(selected: list[str]) -> None:
     st.markdown("<style>" + "".join(rules) + "</style>", unsafe_allow_html=True)
 
 
+def navigate(page: str) -> None:
+    st.session_state.current_page = page
+
+
+def render_navigation() -> None:
+    marker = ":is([data-testid='element-container'], [data-testid='stElementContainer']):has(.prism-nav-marker)"
+    nav_button = f"{marker} + div button"
+    logo_button = f":is([data-testid='element-container'], [data-testid='stElementContainer']):has(.prism-logo-marker) + div button"
+    menu_list = "[data-testid='stVerticalBlock']:has(.prism-menu-list):not(:has([data-testid='stVerticalBlock'] .prism-menu-list))"
+    menu_button = f"{menu_list} button"
+    st.markdown(
+        "<style>"
+        "html, body, [data-testid='stAppViewContainer'], [data-testid='stAppViewContainer'] * {font-family:Georgia,'Times New Roman',serif!important;}"
+        "[data-baseweb='menu'], [data-baseweb='menu'] *, [data-baseweb='popover'], [data-baseweb='popover'] *, [role='listbox'], [role='listbox'] *, [role='option'] {font-family:Georgia,'Times New Roman',serif!important;}"
+        f"{marker} {{display:none!important;}}"
+        f"{nav_button} {{background:transparent!important;border:0!important;box-shadow:none!important;border-radius:0!important;color:#333!important;padding:0.5rem 0.15rem!important;}}"
+        f"{nav_button} p {{font-family:Georgia,'Times New Roman',serif!important;font-size:clamp(16px,1.8vw,22px)!important;font-weight:600;}}"
+        f"{nav_button}[kind='primary'], {nav_button}:hover {{color:#000!important;}}"
+        f"{nav_button}[kind='primary'] p {{font-weight:800!important;}}"
+        f"{nav_button}:focus-visible {{outline:1px solid currentColor!important;outline-offset:3px;}}"
+        f"{logo_button} {{color:#000!important;margin-bottom:1.4rem;}}"
+        f"{logo_button} p {{font-size:36px!important;font-weight:700!important;letter-spacing:0.02em;}}"
+        f"{menu_list} {{position:relative;display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;justify-content:center;align-items:center;gap:0.5rem 2.5rem!important;margin-bottom:1rem;width:100%!important;box-sizing:border-box;}}"
+        f"{menu_list}::after {{content:'';position:absolute;left:50%;margin-left:-50vw;bottom:0;width:100vw;height:1px;background:#D0D0D0;pointer-events:none;}}"
+        f"{menu_list} > div, {menu_list} [data-testid='stButton'] {{width:max-content!important;max-width:100%;flex:0 0 auto!important;}}"
+        f"{menu_list} > div:has(.prism-menu-list) {{display:none!important;}}"
+        f"{menu_button} {{position:relative;white-space:nowrap;padding-bottom:0.75rem!important;}}"
+        f"{menu_button}::after {{content:'';position:absolute;left:0.15rem;right:0.15rem;bottom:0;height:2px;background:transparent;z-index:1;}}"
+        f"{menu_button}[kind='primary']::after {{background:linear-gradient(90deg,#6E7BC9,#8F99D8);}}"
+        "</style>", unsafe_allow_html=True,
+    )
+    _, header, _ = st.columns([1, 8, 1])
+    with header:
+        _, logo, _ = st.columns([1, 1, 1])
+        with logo:
+            st.markdown("<span class='prism-nav-marker prism-logo-marker' hidden></span>", unsafe_allow_html=True)
+            st.button("PRISM", key="nav_home", use_container_width=True,
+                      on_click=navigate, args=("home",))
+        menus = [
+            ("recommendation", "Perfume Recommendation"),
+            ("scent_map", "Interactive Scent Map"),
+            ("profile", "My Profile"),
+        ]
+        with st.container():
+            st.markdown("<span class='prism-menu-list' hidden></span>", unsafe_allow_html=True)
+            for page, label in menus:
+                st.markdown("<span class='prism-nav-marker' hidden></span>", unsafe_allow_html=True)
+                st.button(label, key=f"nav_{page}", use_container_width=False,
+                          type="primary" if st.session_state.current_page == page else "secondary",
+                          on_click=navigate, args=(page,))
+
+
 def main() -> None:
-    st.set_page_config(layout="wide", page_title="PRISM Scent Map", page_icon="◉")
+    st.set_page_config(layout="wide", page_title="PRISM", page_icon="◉")
+    if "current_page" not in st.session_state:
+        st.session_state.current_page = "home"
+    render_navigation()
+    if st.session_state.current_page == "scent_map":
+        render_scent_map()
+
+
+def render_scent_map() -> None:
     try:
         df, section_angles = load_scent_map(**data_settings())
     except DataLoadError as exc:
@@ -333,9 +393,10 @@ def main() -> None:
         st.stop()
     content_left, content_center, content_right = st.columns([1, 8, 1])
     with content_center:
-        st.title("PRISM Scent Map")
-        st.write("각 점은 향수 한 개를 나타내며, 위치는 주요 accord 조합에 따라 결정됩니다. "
-                 "점에 마우스를 올려 이름과 주요 향을 확인하세요.")
+        # 지도 제목과 설명은 추후 필요할 때 복원할 수 있도록 보존합니다.
+        # st.title("PRISM Scent Map")
+        # st.write("각 점은 향수 한 개를 나타내며, 위치는 주요 accord 조합에 따라 결정됩니다. "
+        #          "점에 마우스를 올려 이름과 주요 향을 확인하세요.")
         display_columns = ["Name", "Brand", "Gender", "Main Accords", "Notes", "scent_map_x", "scent_map_y", "plot_color"]
         view = prepare_view(df[display_columns], section_angles)
         left, right = st.columns([1, 2])

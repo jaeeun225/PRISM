@@ -6,7 +6,6 @@ import math
 import colorsys
 import ast
 import os
-import time
 import zlib
 from io import BytesIO
 
@@ -364,6 +363,7 @@ def render_navigation() -> None:
     menu_button = f"{menu_list} button"
     st.markdown(
         "<style>"
+        "[data-baseweb='tag'], [role='button'][aria-label*='close by backspace'], [aria-label*=', close by backspace'] {display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;}"
         "html, body, [data-testid='stAppViewContainer'], [data-testid='stAppViewContainer'] * {font-family:Georgia,'Times New Roman',serif!important;}"
         "[data-baseweb='menu'], [data-baseweb='menu'] *, [data-baseweb='popover'], [data-baseweb='popover'] *, [data-baseweb='tooltip'], [data-baseweb='tooltip'] *, [role='listbox'], [role='listbox'] *, [role='option'], [role='tooltip'], [role='tooltip'] * {font-family:Georgia,'Times New Roman',serif!important;}"
         f"{marker} {{display:none!important;}}"
@@ -410,9 +410,9 @@ def main() -> None:
     # reruns do not briefly reveal the native selected capsules.
     st.html(
         "<style id='prism-native-chip-visibility'>"
-        "[data-testid='stMultiSelect'] [data-baseweb='tag'], "
-        "[data-testid='stMultiSelect'] [data-testid='stMultiSelectTag'] "
-        "{display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;}"
+        "[data-baseweb='tag'], [data-testid='stMultiSelectTag'] "
+        "{display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;background:#6E7BC9!important;color:#FFFFFF!important;border:1px solid #5967B5!important;border-radius:999px!important;padding:0.2rem 0.7rem!important;font-family:Georgia,'Times New Roman',serif!important;}"
+        "[data-baseweb='tag'] *, [data-testid='stMultiSelectTag'] * {font-family:Georgia,'Times New Roman',serif!important;color:#FFFFFF!important;}"
         "[data-baseweb='select'] input::placeholder {opacity:1!important;color:#8a8a8a!important;font-family:Georgia,'Times New Roman',serif!important;}"
         "[data-baseweb='select'] input[placeholder] {min-width:8rem!important;}"
         "[data-baseweb='select'] > div:has([data-baseweb='tag']) {position:relative;}"
@@ -427,26 +427,28 @@ def main() -> None:
         render_scent_map()
 
 
+@st.cache_resource(show_spinner=False)
+def get_display_cache(settings_key: tuple) -> dict:
+    """Build the prepared view and full figure once per process, shared by sessions."""
+    settings = dict(settings_key)
+    df, section_angles = load_scent_map(**settings)
+    columns = ["Name", "Brand", "Gender", "Main Accords", "Notes", "scent_map_x", "scent_map_y", "plot_color"]
+    view = prepare_view(df[columns], section_angles)
+    view["marker_rgb"] = view.plot_color.map(marker_rgb)
+    view["marker_border"] = view.marker_rgb.map(darker_border)
+    view["marker_text"] = view.marker_rgb.map(contrast_text_color)
+    template = build_figure(view.iloc[:0], section_angles).to_plotly_json()
+    full_figure = fast_figure(view, template, "")
+    return {"view": view, "template": template, "full_figure": full_figure, "section_angles": section_angles}
+
+
 @st.fragment
 def render_scent_map() -> None:
     try:
         settings = data_settings()
-        cached = st.session_state.get("_map_display")
-        if cached is None or cached["settings"] != settings or time.monotonic() - cached["created"] >= 86400:
-            with st.spinner("향수 데이터를 불러오고 지도를 계산하고 있습니다..."):
-                df, section_angles = load_scent_map(**settings)
-                columns = ["Name", "Brand", "Gender", "Main Accords", "Notes", "scent_map_x", "scent_map_y", "plot_color"]
-                view = prepare_view(df[columns], section_angles)
-                view["marker_rgb"] = view.plot_color.map(marker_rgb)
-                view["marker_border"] = view.marker_rgb.map(darker_border)
-                view["marker_text"] = view.marker_rgb.map(contrast_text_color)
-                template = build_figure(view.iloc[:0], section_angles).to_plotly_json()
-                # Build the expensive unfiltered figure once; clearing all
-                # accords can then reuse it without rebuilding 38k points.
-                full_figure = fast_figure(view, template, "")
-                cached = dict(settings=settings, created=time.monotonic(), view=view,
-                              template=template, full_figure=full_figure)
-                st.session_state._map_display = cached
+        settings_key = tuple(sorted(settings.items()))
+        with st.spinner("향수 데이터를 불러오고 지도를 계산하고 있습니다..."):
+            cached = get_display_cache(settings_key)
         view = cached["view"]
     except DataLoadError as exc:
         st.error(str(exc))

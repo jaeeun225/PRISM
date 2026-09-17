@@ -5,4 +5,4 @@ enableWebsocketCompression = true
 [theme]
 # Keep Streamlit controls and loading indicators on the PRISM light-blue palette.
 base = "light"
-primaryColor = "#4FC3F7"
+primaryColor = "#6E7BC9"

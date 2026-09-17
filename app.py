@@ -363,7 +363,7 @@ def render_navigation() -> None:
     menu_button = f"{menu_list} button"
     st.markdown(
         "<style>"
-        "[data-baseweb='tag'], [data-baseweb*='tag'], [data-testid*='MultiSelectTag'], [role='button'][aria-label*='close by backspace'], [aria-label*=', close by backspace'] {display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;}"
+        "[data-baseweb='tag'], [data-baseweb*='tag'], [data-testid*='MultiSelectTag'], [class*='st-key-accord_selector'] [data-baseweb='tag'], [data-baseweb='select'] span[title], [role='button'][aria-label*='close by backspace'], [aria-label*=', close by backspace'] {display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;}"
         "html, body, [data-testid='stAppViewContainer'], [data-testid='stAppViewContainer'] * {font-family:Georgia,'Times New Roman',serif!important;}"
         "[data-baseweb='menu'], [data-baseweb='menu'] *, [data-baseweb='popover'], [data-baseweb='popover'] *, [data-baseweb='tooltip'], [data-baseweb='tooltip'] *, [role='listbox'], [role='listbox'] *, [role='option'], [role='tooltip'], [role='tooltip'] * {font-family:Georgia,'Times New Roman',serif!important;}"
         f"{marker} {{display:none!important;}}"

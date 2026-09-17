@@ -313,7 +313,6 @@ def accord_filter(options: list[str]) -> list[str]:
     )
     st.session_state.selected_accords = list(selected)
     # Native-chip CSS lives in the first, unconditional HTML element in main().
-    st.markdown("<span class='prism-accord-placeholder' hidden></span>", unsafe_allow_html=True)
     return selected
 
 
@@ -414,12 +413,12 @@ def main() -> None:
         "[data-baseweb='tag'], [data-testid='stMultiSelectTag'] "
         "{display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;background:#6E7BC9!important;color:#FFFFFF!important;border:1px solid #5967B5!important;border-radius:999px!important;padding:0.2rem 0.7rem!important;font-family:Georgia,'Times New Roman',serif!important;}"
         "[data-baseweb='tag'] *, [data-testid='stMultiSelectTag'] * {font-family:Georgia,'Times New Roman',serif!important;color:#FFFFFF!important;}"
-        ".prism-accord-placeholder {display:none!important;}"
         "[data-baseweb='select'] input::placeholder {opacity:1!important;color:#8a8a8a!important;font-family:Georgia,'Times New Roman',serif!important;}"
         "[data-baseweb='select'] input[placeholder] {min-width:8rem!important;}"
-        "[data-baseweb='select'] > div:has([data-baseweb='tag']) {position:relative;}"
-        "[data-baseweb='select'] > div:has([data-baseweb='tag'])::before {content:'Choose an option';position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#8a8a8a;font-family:Georgia,'Times New Roman',serif;font-size:inherit;line-height:inherit;white-space:nowrap;pointer-events:none;}"
-        "[data-baseweb='select'] > div:has([data-baseweb='tag']):focus-within::before {content:none;}"
+        "[data-baseweb='select'] > div:first-child {position:relative;}"
+        "[data-baseweb='select'] > div:first-child::before {content:'Choose an option';position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#8a8a8a;font-family:Georgia,'Times New Roman',serif;font-size:inherit;line-height:inherit;white-space:nowrap;pointer-events:none;z-index:2;}"
+        "[data-baseweb='select'] > div:first-child:focus-within::before {content:none;}"
+        "[data-baseweb='select'] input[placeholder]::placeholder {color:transparent!important;}"
         "</style>",
     )
     if "current_page" not in st.session_state:

@@ -6,6 +6,7 @@ import math
 import colorsys
 import ast
 import os
+import time
 import zlib
 from io import BytesIO
 
@@ -55,7 +56,7 @@ def data_settings() -> dict:
     return settings
 
 
-@st.cache_data(ttl=86400, max_entries=2, show_spinner="향수 데이터를 불러오고 지도를 계산하고 있습니다…")
+@st.cache_data(ttl=86400, max_entries=2, show_spinner=False)
 def load_scent_map(
     source: str, csv_path: str = "", url: str = "", service_key: str = "",
     bucket: str = "prism-data", object_path: str = "fragella_processed.csv.gz",
@@ -202,7 +203,12 @@ def contrast_text_color(color: str) -> str:
 
 def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.Figure:
     """Keep accord colors; enlarge and outline search matches."""
-    matched = df["Name"].fillna("").str.contains(query.strip(), case=False, regex=False) if query.strip() else pd.Series(False, index=df.index)
+    if query.strip():
+        needle = query.strip()
+        matched = (df["Name"].fillna("").str.contains(needle, case=False, regex=False) |
+                   df["Brand"].fillna("").str.contains(needle, case=False, regex=False))
+    else:
+        matched = pd.Series(False, index=df.index)
     fig = go.Figure()
     point_colors = df["plot_color"].map(marker_rgb).tolist()
     point_borders = [darker_border(color) for color in point_colors]
@@ -270,6 +276,33 @@ def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.
     return fig
 
 
+def fast_figure(view: pd.DataFrame, template: dict, query: str) -> go.Figure:
+    """Use validated static layout with trusted, precomputed point arrays.
+
+    Only internally generated, precomputed point properties use this path.
+    Plotly's _validate switch avoids revalidating every CSS color on reruns.
+    Return a Figure: Streamlit revalidates plain dictionaries independently.
+    """
+    def trace(rows, highlight=False):
+        marker = dict(color=rows["marker_rgb"].tolist(), size=12 if highlight else 5, opacity=1)
+        if highlight:
+            marker["line"] = dict(color="#252525", width=2)
+        return dict(type="scattergl", mode="markers", x=rows["scent_map_x"].tolist(),
+                    y=rows["scent_map_y"].tolist(), marker=marker,
+                    hovertext=rows["tooltip"].tolist(), hovertemplate="%{hovertext}<extra></extra>",
+                    hoverlabel=dict(align="left", bgcolor=rows["marker_rgb"].tolist(),
+                                    bordercolor=rows["marker_border"].tolist(),
+                                    font=dict(size=14, color=rows["marker_text"].tolist(),
+                                              family="Georgia, Times New Roman, serif")), showlegend=False)
+    traces = [trace(view)]
+    if query.strip():
+        mask = (view.Name.fillna("").str.contains(query.strip(), case=False, regex=False) |
+                view.Brand.fillna("").str.contains(query.strip(), case=False, regex=False))
+        if mask.any():
+            traces.append(trace(view.loc[mask], True))
+    return go.Figure(data=traces, layout=template["layout"], _validate=False)
+
+
 def accord_filter(options: list[str]) -> list[str]:
     """Search/select here; render removable chips outside the search columns."""
     if "accord_selector" not in st.session_state:
@@ -280,12 +313,7 @@ def accord_filter(options: list[str]) -> list[str]:
         help="accord를 검색해 선택하세요. 선택된 accord 중 하나라도 포함한 향수가 표시됩니다.",
     )
     st.session_state.selected_accords = list(selected)
-    # Hide only the native selected chips; the input remains available for search.
-    st.markdown(
-        "<style>[data-baseweb='tag'] { display: none !important; "
-        "visibility: hidden !important; }</style>",
-        unsafe_allow_html=True,
-    )
+    # Native-chip CSS lives in the first, unconditional HTML element in main().
     return selected
 
 
@@ -319,7 +347,7 @@ def render_accord_chips(selected: list[str]) -> None:
         # full-width per-accord Streamlit container can force a separate row.
         st.markdown(f"<span class='{chip_class}' hidden></span>", unsafe_allow_html=True)
         st.button(f"{accord} ×", key=f"remove_accord_{accord}",
-                  help=f"{accord} 필터 제거", use_container_width=False,
+                  use_container_width=False,
                   on_click=remove_accord, args=(accord,))
     st.markdown("<style>" + "".join(rules) + "</style>", unsafe_allow_html=True)
 
@@ -337,7 +365,7 @@ def render_navigation() -> None:
     st.markdown(
         "<style>"
         "html, body, [data-testid='stAppViewContainer'], [data-testid='stAppViewContainer'] * {font-family:Georgia,'Times New Roman',serif!important;}"
-        "[data-baseweb='menu'], [data-baseweb='menu'] *, [data-baseweb='popover'], [data-baseweb='popover'] *, [role='listbox'], [role='listbox'] *, [role='option'] {font-family:Georgia,'Times New Roman',serif!important;}"
+        "[data-baseweb='menu'], [data-baseweb='menu'] *, [data-baseweb='popover'], [data-baseweb='popover'] *, [data-baseweb='tooltip'], [data-baseweb='tooltip'] *, [role='listbox'], [role='listbox'] *, [role='option'], [role='tooltip'], [role='tooltip'] * {font-family:Georgia,'Times New Roman',serif!important;}"
         f"{marker} {{display:none!important;}}"
         f"{nav_button} {{background:transparent!important;border:0!important;box-shadow:none!important;border-radius:0!important;color:#333!important;padding:0.5rem 0.15rem!important;}}"
         f"{nav_button} p {{font-family:Georgia,'Times New Roman',serif!important;font-size:clamp(16px,1.8vw,22px)!important;font-weight:600;}}"
@@ -378,6 +406,20 @@ def render_navigation() -> None:
 
 def main() -> None:
     st.set_page_config(layout="wide", page_title="PRISM", page_icon="◉")
+    # Inject the multiselect chrome rules before any widgets are rendered so
+    # reruns do not briefly reveal the native selected capsules.
+    st.html(
+        "<style id='prism-native-chip-visibility'>"
+        "[data-testid='stMultiSelect'] [data-baseweb='tag'], "
+        "[data-testid='stMultiSelect'] [data-testid='stMultiSelectTag'] "
+        "{display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;}"
+        "[data-baseweb='select'] input::placeholder {opacity:1!important;color:#8a8a8a!important;font-family:Georgia,'Times New Roman',serif!important;}"
+        "[data-baseweb='select'] input[placeholder] {min-width:8rem!important;}"
+        "[data-baseweb='select'] > div:has([data-baseweb='tag']) {position:relative;}"
+        "[data-baseweb='select'] > div:has([data-baseweb='tag'])::before {content:'Choose an option';position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#8a8a8a;font-family:Georgia,'Times New Roman',serif;font-size:inherit;line-height:inherit;white-space:nowrap;pointer-events:none;}"
+        "[data-baseweb='select'] > div:has([data-baseweb='tag']):focus-within::before {content:none;}"
+        "</style>",
+    )
     if "current_page" not in st.session_state:
         st.session_state.current_page = "home"
     render_navigation()
@@ -385,9 +427,27 @@ def main() -> None:
         render_scent_map()
 
 
+@st.fragment
 def render_scent_map() -> None:
     try:
-        df, section_angles = load_scent_map(**data_settings())
+        settings = data_settings()
+        cached = st.session_state.get("_map_display")
+        if cached is None or cached["settings"] != settings or time.monotonic() - cached["created"] >= 86400:
+            with st.spinner("향수 데이터를 불러오고 지도를 계산하고 있습니다..."):
+                df, section_angles = load_scent_map(**settings)
+                columns = ["Name", "Brand", "Gender", "Main Accords", "Notes", "scent_map_x", "scent_map_y", "plot_color"]
+                view = prepare_view(df[columns], section_angles)
+                view["marker_rgb"] = view.plot_color.map(marker_rgb)
+                view["marker_border"] = view.marker_rgb.map(darker_border)
+                view["marker_text"] = view.marker_rgb.map(contrast_text_color)
+                template = build_figure(view.iloc[:0], section_angles).to_plotly_json()
+                # Build the expensive unfiltered figure once; clearing all
+                # accords can then reuse it without rebuilding 38k points.
+                full_figure = fast_figure(view, template, "")
+                cached = dict(settings=settings, created=time.monotonic(), view=view,
+                              template=template, full_figure=full_figure)
+                st.session_state._map_display = cached
+        view = cached["view"]
     except DataLoadError as exc:
         st.error(str(exc))
         st.stop()
@@ -397,8 +457,6 @@ def render_scent_map() -> None:
         # st.title("PRISM Scent Map")
         # st.write("각 점은 향수 한 개를 나타내며, 위치는 주요 accord 조합에 따라 결정됩니다. "
         #          "점에 마우스를 올려 이름과 주요 향을 확인하세요.")
-        display_columns = ["Name", "Brand", "Gender", "Main Accords", "Notes", "scent_map_x", "scent_map_y", "plot_color"]
-        view = prepare_view(df[display_columns], section_angles)
         left, right = st.columns([1, 2])
         with left:
             query = st.text_input("향수 이름 검색", placeholder="예: Dior, Sauvage, No. 5",
@@ -429,7 +487,13 @@ def render_scent_map() -> None:
             visible = view.loc[accord_mask]
         else:
             visible = view
-        count = int(visible["Name"].fillna("").str.contains(query.strip(), case=False, regex=False).sum()) if query.strip() else None
+        if query.strip():
+            needle = query.strip()
+            search_mask = (visible["Name"].fillna("").str.contains(needle, case=False, regex=False) |
+                           visible["Brand"].fillna("").str.contains(needle, case=False, regex=False))
+            count = int(search_mask.sum())
+        else:
+            count = None
         status = f"표시 중 **{len(visible):,} / {len(view):,}개**"
         if count is not None:
             status += f" · 검색 결과 **{count:,}개**"
@@ -437,7 +501,10 @@ def render_scent_map() -> None:
         st.caption("마우스 휠: 확대·축소  ·  드래그: 영역 확대  ·  더블클릭: 전체 보기  ·  검색어 입력 후 Enter")
         if count == 0:
             st.info("선택한 accord에서 일치하는 향수를 찾지 못했습니다. 검색어나 accord를 변경해 보세요.")
-        fig = build_figure(visible, section_angles, query)
+        if not selected_accords and not query.strip():
+            fig = cached["full_figure"]
+        else:
+            fig = fast_figure(visible, cached["template"], query)
         st.plotly_chart(
             fig, use_container_width=True, theme=None,
             config={"scrollZoom": True, "displaylogo": False, "responsive": True,

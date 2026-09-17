@@ -415,10 +415,6 @@ def main() -> None:
         "[data-baseweb='tag'] *, [data-testid='stMultiSelectTag'] * {font-family:Georgia,'Times New Roman',serif!important;color:#FFFFFF!important;}"
         "[data-baseweb='select'] input::placeholder {opacity:1!important;color:#8a8a8a!important;font-family:Georgia,'Times New Roman',serif!important;}"
         "[data-baseweb='select'] input[placeholder] {min-width:8rem!important;}"
-        "[data-baseweb='select'] > div:first-child {position:relative;}"
-        "[data-baseweb='select'] > div:first-child::before {content:'Choose an option';position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#8a8a8a;font-family:Georgia,'Times New Roman',serif;font-size:inherit;line-height:inherit;white-space:nowrap;pointer-events:none;z-index:2;}"
-        "[data-baseweb='select'] > div:first-child:focus-within::before {content:none;}"
-        "[data-baseweb='select'] input[placeholder]::placeholder {color:transparent!important;}"
         "</style>",
     )
     if "current_page" not in st.session_state:

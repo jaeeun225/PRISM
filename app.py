@@ -13,7 +13,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.scent_map import COLOR_HUE_ANCHOR, compute_scent_map
+from src.scent_map import ACCORD_TO_SECTION, COLOR_HUE_ANCHOR, compute_scent_map
 from src.storage_data import DataLoadError, StorageClient
 
 
@@ -137,6 +137,15 @@ def prepare_view(df: pd.DataFrame, section_angles: dict) -> pd.DataFrame:
         return "<br>".join(", ".join(chunk) for chunk in chunks)
 
     view["all_accords"] = view["Main Accords"].map(all_accords)
+    def parse_accords(value):
+        try:
+            parsed = ast.literal_eval(value) if isinstance(value, str) else value
+        except (ValueError, SyntaxError):
+            return []
+        return parsed if isinstance(parsed, list) else []
+
+    view["accord_values"] = view["Main Accords"].map(parse_accords)
+    view["accord_values"] = view["accord_values"].map(lambda value: value if isinstance(value, list) else [])
     view["note_lines"] = view["Notes"].map(format_notes)
     tooltips = []
     for name, brand, gender, accords, note_lines in view[
@@ -202,8 +211,8 @@ def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.
         x=df["scent_map_x"], y=df["scent_map_y"], mode="markers",
         marker=dict(color=point_colors, size=5, opacity=1),
         hovertext=df["tooltip"], hovertemplate="%{hovertext}<extra></extra>",
-        hoverlabel=dict(bgcolor=point_colors, bordercolor=point_borders,
-                        font=dict(size=16, color=point_text_colors)),
+        hoverlabel=dict(align="left", bgcolor=point_colors, bordercolor=point_borders,
+                        font=dict(size=14, color=point_text_colors)),
         showlegend=False,
     ))
     if matched.any():
@@ -216,8 +225,8 @@ def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.
             marker=dict(color=found_colors, size=12, opacity=1,
                         line=dict(color="#252525", width=2)),
             hovertext=found["tooltip"], hovertemplate="%{hovertext}<extra></extra>",
-            hoverlabel=dict(bgcolor=found_colors, bordercolor=found_borders,
-                            font=dict(size=16, color=found_text_colors)),
+            hoverlabel=dict(align="left", bgcolor=found_colors, bordercolor=found_borders,
+                            font=dict(size=14, color=found_text_colors)),
             showlegend=False,
         ))
 
@@ -249,7 +258,7 @@ def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.
         showlegend=False,
         hovermode="closest",
         hoverdistance=20,
-        hoverlabel=dict(font=dict(size=16)),
+        hoverlabel=dict(align="left", font=dict(size=14)),
         dragmode="zoom",
         uirevision="prism-scent-map",
         xaxis=dict(visible=False, range=[-1.45, 1.45], constrain="domain"),
@@ -261,42 +270,118 @@ def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.
     return fig
 
 
+def accord_filter(options: list[str]) -> list[str]:
+    """Search/select here; render removable chips outside the search columns."""
+    if "accord_selector" not in st.session_state:
+        st.session_state.accord_selector = st.session_state.get("selected_accords", [])
+    selected = st.multiselect(
+        "Accord 검색 및 추가", options,
+        key="accord_selector",
+        help="accord를 검색해 선택하세요. 선택된 accord 중 하나라도 포함한 향수가 표시됩니다.",
+    )
+    st.session_state.selected_accords = list(selected)
+    # Hide only the native selected chips; the input remains available for search.
+    st.markdown(
+        "<style>[data-baseweb='tag'] { display: none !important; "
+        "visibility: hidden !important; }</style>",
+        unsafe_allow_html=True,
+    )
+    return selected
+
+
+def remove_accord(accord: str) -> None:
+    """Callbacks run before widget creation, so widget state can safely change."""
+    updated = [value for value in st.session_state.get("accord_selector", []) if value != accord]
+    st.session_state.accord_selector = updated
+    st.session_state.selected_accords = list(updated)
+
+
+def render_accord_chips(selected: list[str]) -> None:
+    """Render each accord as one content-sized removal button."""
+    if not selected:
+        return
+    # Streamlit 1.37 does not expose the widget key as a button DOM attribute.
+    # A hidden, accord-specific marker scopes CSS to the actual button.
+    rules = []
+    for accord in selected:
+        section = ACCORD_TO_SECTION[accord]
+        color = marker_rgb(hsl_to_css(COLOR_HUE_ANCHOR[section], 75, 40))
+        text_color = contrast_text_color(color)
+        chip_class = "prism-chip-" + accord.replace(" ", "-")
+        marker = f":is([data-testid='element-container'], [data-testid='stElementContainer']):has(.{chip_class})"
+        button = f"{marker} + div button"
+        rules.extend([
+            f"{marker} {{display:none!important;}}",
+            f"{button} {{display:inline-flex!important;width:auto!important;min-width:0!important;min-height:2rem!important;padding:0.2rem 0.7rem!important;border-radius:999px!important;border:1px solid {color}!important;background-color:{color}!important;color:{text_color}!important;white-space:nowrap;}}",
+            f"{button}:hover {{filter:brightness(0.92);}}",
+        ])
+        # Buttons are direct siblings in the shared flex container; no
+        # full-width per-accord Streamlit container can force a separate row.
+        st.markdown(f"<span class='{chip_class}' hidden></span>", unsafe_allow_html=True)
+        st.button(f"{accord} ×", key=f"remove_accord_{accord}",
+                  help=f"{accord} 필터 제거", use_container_width=False,
+                  on_click=remove_accord, args=(accord,))
+    st.markdown("<style>" + "".join(rules) + "</style>", unsafe_allow_html=True)
+
+
 def main() -> None:
     st.set_page_config(layout="wide", page_title="PRISM Scent Map", page_icon="◉")
-    st.title("PRISM Scent Map")
-    st.write("각 점은 향수 한 개를 나타내며, 위치는 주요 accord 조합에 따라 결정됩니다. "
-             "점에 마우스를 올려 이름과 주요 향을 확인하세요.")
     try:
         df, section_angles = load_scent_map(**data_settings())
     except DataLoadError as exc:
         st.error(str(exc))
         st.stop()
-    display_columns = ["Name", "Brand", "Gender", "Main Accords", "Notes", "scent_map_x", "scent_map_y", "plot_color"]
-    view = prepare_view(df[display_columns], section_angles)
-    left, right = st.columns([1, 2])
-    with left:
-        query = st.text_input("향수 이름 검색", placeholder="예: Dior, Sauvage, No. 5",
-                              help="이름 일부로 검색합니다. 일치하는 점의 크기와 테두리를 강조합니다.")
-    with right:
-        selected = st.multiselect("향 계열 섹션", list(section_angles), default=list(section_angles),
-                                   help="지도에서 점이 위치한 구역을 기준으로 필터링합니다. 선택하지 않은 구역의 점은 숨깁니다.")
-    visible = view.loc[view["map_section"].isin(selected)]
-    count = int(visible["Name"].fillna("").str.contains(query.strip(), case=False, regex=False).sum()) if query.strip() else None
-    status = f"표시 중 **{len(visible):,} / {len(view):,}개**"
-    if count is not None:
-        status += f" · 검색 결과 **{count:,}개**"
-    st.markdown(status)
-    st.caption("마우스 휠: 확대·축소  ·  드래그: 영역 확대  ·  더블클릭: 전체 보기  ·  검색어 입력 후 Enter")
-    if not selected:
-        st.info("표시할 향 계열 섹션을 하나 이상 선택해 주세요.")
-    elif count == 0:
-        st.info("선택한 섹션에서 일치하는 향수를 찾지 못했습니다. 검색어나 섹션을 변경해 보세요.")
-    fig = build_figure(visible, section_angles, query)
-    st.plotly_chart(
-        fig, use_container_width=True, theme=None,
-        config={"scrollZoom": True, "displaylogo": False, "responsive": True,
-                "staticPlot": False, "displayModeBar": True},
-    )
+    content_left, content_center, content_right = st.columns([1, 8, 1])
+    with content_center:
+        st.title("PRISM Scent Map")
+        st.write("각 점은 향수 한 개를 나타내며, 위치는 주요 accord 조합에 따라 결정됩니다. "
+                 "점에 마우스를 올려 이름과 주요 향을 확인하세요.")
+        display_columns = ["Name", "Brand", "Gender", "Main Accords", "Notes", "scent_map_x", "scent_map_y", "plot_color"]
+        view = prepare_view(df[display_columns], section_angles)
+        left, right = st.columns([1, 2])
+        with left:
+            query = st.text_input("향수 이름 검색", placeholder="예: Dior, Sauvage, No. 5",
+                                  help="이름 일부로 검색합니다. 일치하는 점의 크기와 테두리를 강조합니다.")
+        with right:
+            accord_options = sorted(ACCORD_TO_SECTION)
+            if "selected_accords" not in st.session_state:
+                st.session_state.selected_accords = []
+            selected_accords = accord_filter(accord_options)
+        # A dedicated wrapping flex container keeps pills on one line where
+        # space permits, without changing the surrounding page layout.
+        with st.container():
+            st.markdown("<span class='prism-chip-list-marker'></span>", unsafe_allow_html=True)
+            render_accord_chips(selected_accords)
+            chip_list = "[data-testid='stVerticalBlock']:has(.prism-chip-list-marker):not(:has([data-testid='stVerticalBlock'] .prism-chip-list-marker))"
+            st.markdown(
+                "<style>"
+                f"{chip_list} {{display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;align-items:center;gap:0.5rem!important;}}"
+                f"{chip_list} > div {{width:max-content!important;max-width:100%;flex:0 0 auto!important;min-width:0!important;}}"
+                f"{chip_list} [data-testid='stButton'] {{width:max-content!important;max-width:100%;}}"
+                f"{chip_list} > div:has(.prism-chip-list-marker), "
+                f"{chip_list} > div:has(style) {{display:none!important;}}"
+                "</style>", unsafe_allow_html=True,
+            )
+        if selected_accords:
+            selected_set = set(selected_accords)
+            accord_mask = view["accord_values"].map(lambda values: bool(selected_set.intersection(values)))
+            visible = view.loc[accord_mask]
+        else:
+            visible = view
+        count = int(visible["Name"].fillna("").str.contains(query.strip(), case=False, regex=False).sum()) if query.strip() else None
+        status = f"표시 중 **{len(visible):,} / {len(view):,}개**"
+        if count is not None:
+            status += f" · 검색 결과 **{count:,}개**"
+        st.markdown(status)
+        st.caption("마우스 휠: 확대·축소  ·  드래그: 영역 확대  ·  더블클릭: 전체 보기  ·  검색어 입력 후 Enter")
+        if count == 0:
+            st.info("선택한 accord에서 일치하는 향수를 찾지 못했습니다. 검색어나 accord를 변경해 보세요.")
+        fig = build_figure(visible, section_angles, query)
+        st.plotly_chart(
+            fig, use_container_width=True, theme=None,
+            config={"scrollZoom": True, "displaylogo": False, "responsive": True,
+                    "staticPlot": False, "displayModeBar": True},
+        )
 
 
 if __name__ == "__main__":

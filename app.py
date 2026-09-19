@@ -19,7 +19,7 @@ from src.storage_data import DataLoadError, StorageClient
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "processed" / "fragella_processed.csv"
 BACKGROUND = "#fafaf8"
-SCENT_DATA_VERSION = "hue-anchors-2026-09-20-v2"
+SCENT_DATA_VERSION = "rgb-chroma-2026-09-20-v3"
 
 
 def hsl_to_css(hue: float, saturation: float, lightness: float) -> str:

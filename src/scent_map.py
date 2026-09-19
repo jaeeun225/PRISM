@@ -3,6 +3,7 @@ PRISM Scent Map 좌표·색상 계산 로직.
 """
 
 import ast
+import colorsys
 import math
 import pandas as pd
 
@@ -132,7 +133,7 @@ def interp_color_from_position(position_angle, section_center):
     """
     position_angle: compute_fragrance_position()이 반환한 최종 위치 각도
     section_center: {섹션명: 위치용 중심각도} (compute_section_angles() 결과 기반)
-    반환: hue (0~360)
+    반환: (hue (0~360), RGB chroma (0~1))
     """
     anchors = sorted(section_center.items(), key=lambda x: x[1])
     n = len(anchors)
@@ -146,9 +147,13 @@ def interp_color_from_position(position_angle, section_center):
         if rel <= span:
             t = rel / span
             h1, h2 = COLOR_HUE_ANCHOR[s1], COLOR_HUE_ANCHOR[s2]
-            diff = ((h2 - h1 + 180) % 360) - 180  # 원형 최단 경로로 보간
-            return (h1 + diff * t) % 360
-    return COLOR_HUE_ANCHOR[anchors[0][0]]
+            rgb1 = colorsys.hls_to_rgb((h1 % 360) / 360, 0.5, 1.0)
+            rgb2 = colorsys.hls_to_rgb((h2 % 360) / 360, 0.5, 1.0)
+            rgb = tuple(v1 + (v2 - v1) * t for v1, v2 in zip(rgb1, rgb2))
+            hue, _, _ = colorsys.rgb_to_hls(*rgb)
+            chroma = max(rgb) - min(rgb)
+            return (hue * 360) % 360, chroma
+    return COLOR_HUE_ANCHOR[anchors[0][0]], 1.0
 
 
 def radius_to_hsl(R, min_saturation=0.03, max_lightness=0.92, min_lightness=0.5):
@@ -191,8 +196,9 @@ def compute_scent_map(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         angle, R, _ = compute_fragrance_position(accs, strengths, section_center)
 
         if angle is not None:
-            hue = interp_color_from_position(angle, section_center)
+            hue, chroma = interp_color_from_position(angle, section_center)
             sat, light = radius_to_hsl(R)
+            sat *= chroma
         else:
             hue, sat, light = None, None, None
 

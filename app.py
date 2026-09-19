@@ -19,6 +19,7 @@ from src.storage_data import DataLoadError, StorageClient
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "processed" / "fragella_processed.csv"
 BACKGROUND = "#fafaf8"
+SCENT_DATA_VERSION = "hue-anchors-2026-09-20-v2"
 
 
 def hsl_to_css(hue: float, saturation: float, lightness: float) -> str:
@@ -37,7 +38,7 @@ def data_settings() -> dict:
             revision = path.stat().st_mtime_ns
         except OSError:
             raise DataLoadError("로컬 CSV를 찾을 수 없습니다. SCENT_CSV_PATH를 확인하세요.") from None
-        return {"source": source, "csv_path": str(path), "version": str(revision)}
+        return {"source": source, "csv_path": str(path), "version": f"{SCENT_DATA_VERSION}:{revision}"}
     if source != "supabase":
         raise DataLoadError("SCENT_DATA_SOURCE는 supabase 또는 local이어야 합니다.")
     try:
@@ -47,7 +48,7 @@ def data_settings() -> dict:
             "service_key": str(st.secrets.get("SUPABASE_SERVICE_KEY", "")).strip(),
             "bucket": str(st.secrets.get("SUPABASE_BUCKET", "prism-data")).strip(),
             "object_path": str(st.secrets.get("SUPABASE_OBJECT_PATH", "fragella_processed.csv.gz")).strip(),
-            "version": str(st.secrets.get("SCENT_DATA_VERSION", "1")),
+            "version": SCENT_DATA_VERSION + ":" + str(st.secrets.get("SCENT_DATA_VERSION", "1")),
         }
     except Exception:
         # Do not display a TOML parser error, which could quote a secret line.

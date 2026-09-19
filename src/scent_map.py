@@ -47,12 +47,22 @@ AXIS_EXCLUDED_ACCORDS = {
 
 STRENGTH_WEIGHT = {"Dominant": 8, "Prominent": 4, "Moderate": 2, "Subtle": 1}
 
-# 색상용 hue 앵커 (위치용 각도표와 별도 — 각 섹션의 실제 원재료 색을 직관적으로 반영)
+# 색상용 hue 앵커 (Michael Edwards Fragrance Wheel 원본 라벨 색조 기준)
 COLOR_HUE_ANCHOR = {
-    "Floral": 350, "Soft Floral": 330, "Floral Amber": 318, "Soft Amber": 350,
-    "Amber": 22, "Woody Amber": 28, "Woods": 34, "Mossy Woods": 110,
-    "Dry Woods": 36, "Aromatic": 258, "Citrus": 50, "Water": 200,
-    "Green": 125, "Fruity": 24,
+    'Floral': 4,
+    'Soft Floral': 333,
+    'Floral Amber': 328,
+    'Soft Amber': 326,
+    'Amber': 350,
+    'Woody Amber': 21,
+    'Woods': 33,
+    'Mossy Woods': 160,
+    'Dry Woods': 53,
+    'Aromatic': 245,
+    'Citrus': 49,
+    'Water': 196,
+    'Green': 111,
+    'Fruity': 24,
 }
 
 def safe_eval(x):

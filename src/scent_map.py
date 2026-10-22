@@ -248,8 +248,8 @@ def build_highlight_trace(coords_df, ranks, scores=None, marker_size=None, show_
         customdata=[[rank, float(scores[identifier]) if scores is not None else None]
                     for identifier, rank in zip(coords_df['_id'], values)],
         hovertemplate=("%{hovertext}"
-                       + ("<br><br><b>순위:</b> %{customdata[0]}위" if show_rank else "")
-                       + ("<br><b>유사도:</b> %{customdata[1]:.4f}" if scores is not None else "")
+                       + ("<br><br><b>Rank:</b> %{customdata[0]}" if show_rank else "")
+                       + ("<br><b>Similarity:</b> %{customdata[1]:.4f}" if scores is not None else "")
                        + "<extra></extra>"),
         hoverlabel=dict(align='left', bgcolor=colors,
                         font=dict(size=14, family='Georgia, Times New Roman, serif',

@@ -212,14 +212,8 @@ def contrast_text_color(color: str) -> str:
     return shared_contrast_text_color(color)
 
 
-def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.Figure:
-    """Keep accord colors; enlarge and outline search matches."""
-    if query.strip():
-        needle = query.strip()
-        matched = (df["Name"].fillna("").str.contains(needle, case=False, regex=False) |
-                   df["Brand"].fillna("").str.contains(needle, case=False, regex=False))
-    else:
-        matched = pd.Series(False, index=df.index)
+def build_figure(df: pd.DataFrame, section_angles: dict) -> go.Figure:
+    """Build the shared base map and section layout."""
     fig = go.Figure()
     point_colors = df["plot_color"].map(marker_rgb).tolist()
     point_borders = [darker_border(color) for color in point_colors]
@@ -232,21 +226,6 @@ def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.
                         font=dict(size=14, color=point_text_colors, family="Georgia, Times New Roman, serif")),
         showlegend=False,
     ))
-    if matched.any():
-        found = df.loc[matched]
-        found_colors = found["plot_color"].map(marker_rgb).tolist()
-        found_borders = [darker_border(color) for color in found_colors]
-        found_text_colors = [contrast_text_color(color) for color in found_colors]
-        fig.add_trace(go.Scattergl(
-            x=found["scent_map_x"], y=found["scent_map_y"], mode="markers",
-            marker=dict(color=found_colors, size=12, opacity=1,
-                        line=dict(color="#252525", width=2)),
-            hovertext=found["tooltip"], hovertemplate="%{hovertext}<extra></extra>",
-            hoverlabel=dict(align="left", bgcolor=found_colors, bordercolor=found_borders,
-                            font=dict(size=14, color=found_text_colors, family="Georgia, Times New Roman, serif")),
-            showlegend=False,
-        ))
-
     for section, angles in section_angles.items():
         # The original calculation uses x=sin(angle), y=cos(angle).
         start = math.radians(angles["start"])
@@ -294,10 +273,8 @@ def fast_figure(view: pd.DataFrame, template: dict, query: str) -> go.Figure:
     Plotly's _validate switch avoids revalidating every CSS color on reruns.
     Return a Figure: Streamlit revalidates plain dictionaries independently.
     """
-    def trace(rows, highlight=False):
-        marker = dict(color=rows["marker_rgb"].tolist(), size=12 if highlight else 5, opacity=1)
-        if highlight:
-            marker["line"] = dict(color="#252525", width=2)
+    def trace(rows):
+        marker = dict(color=rows["marker_rgb"].tolist(), size=5, opacity=1)
         return dict(type="scattergl", mode="markers", x=rows["scent_map_x"].tolist(),
                     y=rows["scent_map_y"].tolist(), marker=marker,
                     hovertext=rows["tooltip"].tolist(), hovertemplate="%{hovertext}<extra></extra>",
@@ -305,13 +282,25 @@ def fast_figure(view: pd.DataFrame, template: dict, query: str) -> go.Figure:
                                     bordercolor=rows["marker_border"].tolist(),
                                     font=dict(size=14, color=rows["marker_text"].tolist(),
                                               family="Georgia, Times New Roman, serif")), showlegend=False)
-    traces = [trace(view)]
+    fig = go.Figure(data=[trace(view)], layout=template["layout"], _validate=False)
     if query.strip():
         mask = (view.Name.fillna("").str.contains(query.strip(), case=False, regex=False) |
                 view.Brand.fillna("").str.contains(query.strip(), case=False, regex=False))
         if mask.any():
-            traces.append(trace(view.loc[mask], True))
-    return go.Figure(data=traces, layout=template["layout"], _validate=False)
+            found = view.loc[mask]
+            ranks = {identifier: 1 for identifier in found['_id']}
+            # Interleave complete per-point pairs: later points cover both
+            # the outline and fill of earlier points in their overlapping area.
+            for position in range(len(found)):
+                point = found.iloc[position:position + 1]
+                fig.add_trace(go.Scattergl(
+                    x=point["scent_map_x"].tolist(), y=point["scent_map_y"].tolist(), mode="markers",
+                    marker=dict(symbol="circle", size=12, color="#2c2c2a", opacity=1,
+                                line=dict(width=0)),
+                    hoverinfo="skip", showlegend=False, name="Search outlines",
+                ))
+                fig.add_trace(build_highlight_trace(point, ranks, marker_size=9, show_rank=False, white_width=0.7))
+    return fig
 
 
 def accord_filter(options: list[str]) -> list[str]:

@@ -232,7 +232,7 @@ def get_coordinates(ids, df):
     return df.loc[df['_id'].isin(ids)].dropna(subset=['scent_map_x', 'scent_map_y']).copy()
 
 
-def build_highlight_trace(coords_df, ranks, scores=None):
+def build_highlight_trace(coords_df, ranks, scores=None, marker_size=None, show_rank=True, white_width=2):
     """Reuse prepared detail HTML; ranks and optional scores are keyed by ID."""
     import plotly.graph_objects as go
     from html import escape
@@ -240,20 +240,21 @@ def build_highlight_trace(coords_df, ranks, scores=None):
     colors = coords_df['marker_rgb'].tolist() if 'marker_rgb' in coords_df else coords_df['plot_color'].tolist()
     return go.Scattergl(
         x=coords_df['scent_map_x'], y=coords_df['scent_map_y'], mode='markers',
-        marker=dict(size=[recommendation_marker_size(rank) for rank in values], color=colors,
-                    opacity=1, line=dict(color='#ffffff', width=2)),
+        marker=dict(size=[marker_size if marker_size is not None else recommendation_marker_size(rank) for rank in values], color=colors,
+                    symbol='circle', opacity=1, line=dict(color='#ffffff', width=white_width)),
         hovertext=[row['tooltip'] if 'tooltip' in coords_df else
               f"<b>{escape(str(row['Name']))}</b><br>{escape(str(row['Brand']))}"
               for _, row in coords_df.iterrows()],
         customdata=[[rank, float(scores[identifier]) if scores is not None else None]
                     for identifier, rank in zip(coords_df['_id'], values)],
-        hovertemplate=("%{hovertext}<br><br><b>순위:</b> %{customdata[0]}위"
+        hovertemplate=("%{hovertext}"
+                       + ("<br><br><b>순위:</b> %{customdata[0]}위" if show_rank else "")
                        + ("<br><b>유사도:</b> %{customdata[1]:.4f}" if scores is not None else "")
                        + "<extra></extra>"),
         hoverlabel=dict(align='left', bgcolor=colors,
                         font=dict(size=14, family='Georgia, Times New Roman, serif',
                                   color=[contrast_text_color(color) for color in colors])),
-        name='Recommendations', showlegend=False,
+        name='Recommendations' if show_rank else 'Search matches', showlegend=False,
     )
 
 
@@ -320,35 +321,40 @@ def build_highlight_number_trace(coords_df, ranks, scores=None):
     return trace
 
 
-def build_rank_decorations(coords_df, ranks, background='#fafaf8'):
-    """Only the two point outlines; ranks now belong to the marker text trace."""
+def build_rank_decorations(coords_df, ranks, background='#fafaf8', marker_size=None, white_width=2, charcoal_width=1.5):
+    """Outer charcoal outline; the filled marker already supplies the white ring.
+
+    Keep the outline adjacent to the marker's white stroke, without a second
+    detached white ring that can look like an empty halo at small sizes.
+    """
     shapes = []
     for row in coords_df.to_dict('records'):
         x, y = float(row['scent_map_x']), float(row['scent_map_y'])
-        ring = recommendation_marker_size(ranks[row['_id']]) / 2 + 1
-        for color, width in (('#ffffff', 2), ('#2c2c2a', 1.5)):
-            shapes.append(dict(type='circle', xref='x', yref='y', xsizemode='pixel', ysizemode='pixel',
-                               xanchor=x, yanchor=y, x0=-ring, x1=ring, y0=-ring, y1=ring,
-                               line=dict(color=color, width=width), fillcolor='rgba(0,0,0,0)', layer='above'))
+        diameter = marker_size if marker_size is not None else recommendation_marker_size(ranks[row['_id']])
+        ring = diameter / 2 + white_width / 2 + charcoal_width / 2
+        shapes.append(dict(type='circle', xref='x', yref='y', xsizemode='pixel', ysizemode='pixel',
+                           xanchor=x, yanchor=y, x0=-ring, x1=ring, y0=-ring, y1=ring,
+                           line=dict(color='#2c2c2a', width=charcoal_width),
+                           fillcolor='rgba(0,0,0,0)', layer='above'))
     return shapes, [], coords_df[['scent_map_x','scent_map_y']].copy()
 
 
 
-def separate_recommendation_points(coords_df, ranks, plot_width=420, plot_height=490):
+def separate_recommendation_points(coords_df, ranks, plot_width=420, plot_height=490, marker_size=None, axis_ranges=None):
     """Separate colliding highlight copies in estimated screen pixels only.
 
     Original rows and cached background are never mutated. Spacing is for the
     initial view; browser-only zoom/resize does not rerun this arrangement.
     """
     view = coords_df.copy(deep=True)
-    zoom = compute_zoom_range(coords_df, padding=0.35)
+    zoom = axis_ranges if axis_ranges is not None else compute_zoom_range(coords_df, padding=0.35)
     if len(view) < 2:
         return view, zoom
     scale = min(plot_width / (zoom['xaxis']['range'][1]-zoom['xaxis']['range'][0]),
                 plot_height / (zoom['yaxis']['range'][1]-zoom['yaxis']['range'][0]))
     points = [(float(row.scent_map_x)*scale, float(row.scent_map_y)*scale)
               for row in view.itertuples()]
-    sizes = [recommendation_marker_size(ranks[i])+4 for i in view['_id']]
+    sizes = [(marker_size if marker_size is not None else recommendation_marker_size(ranks[i]))+4 for i in view['_id']]
     parent = list(range(len(points)))
     def find(i):
         while parent[i] != i:

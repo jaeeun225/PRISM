@@ -232,7 +232,7 @@ def get_coordinates(ids, df):
     return df.loc[df['_id'].isin(ids)].dropna(subset=['scent_map_x', 'scent_map_y']).copy()
 
 
-def build_highlight_trace(coords_df, ranks, scores=None, marker_size=None, show_rank=True, white_width=2):
+def build_highlight_trace(coords_df, ranks, scores=None, marker_size=None, show_rank=True, white_width=1):
     """Reuse prepared detail HTML; ranks and optional scores are keyed by ID."""
     import plotly.graph_objects as go
     from html import escape
@@ -278,8 +278,8 @@ def compute_zoom_range(coords_df, padding=0.15):
 
 
 def recommendation_marker_size(rank):
-    """Pixel diameter: 24 minimum, with proportional differentiation at the top."""
-    return max(24.0, 2 * (9.0 + 0.55 * (10-min(10, max(1, rank)))))
+    """Linear pixel diameters: rank 1 is 27.9, rank 10 is 18; no text-size clamp."""
+    return 27.9 - (min(10, max(1, rank)) - 1) * (9.9 / 9)
 
 
 def contrast_text_color(color):

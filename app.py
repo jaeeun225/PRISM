@@ -539,13 +539,23 @@ def recommendation_figure(cached, results):
     coords = get_coordinates(list(ranks), cached['view'])
     if not coords.empty:
         coords, highlight_zoom = separate_recommendation_points(coords, ranks)
-        fig.add_trace(build_highlight_trace(coords, ranks, {item['id']: item['final_score'] for item in results}))
-        fig.add_trace(build_highlight_number_trace(coords, ranks, {item['id']: item['final_score'] for item in results}))
-        shapes, annotations, bounds = build_rank_decorations(coords, ranks, BACKGROUND)
-        for shape in shapes:
-            fig.add_shape(shape)
-        for annotation in annotations:
-            fig.add_annotation(annotation)
+        scores = {item['id']: item['final_score'] for item in results}
+        # Complete per-point stacks, worst rank first: rank 1 is drawn last.
+        order = sorted(range(len(coords)), key=lambda i: ranks[coords.iloc[i]['_id']], reverse=True)
+        for position in order:
+            point = coords.iloc[position:position + 1]
+            fill = build_highlight_trace(point, ranks, scores)
+            diameter = float(fill.marker.size[0])
+            # Keep charcoal diameter 4px larger (2px nominal radial gap).
+            # Recommendation white stroke is 1px; search uses its own 0.7px.
+            fig.add_trace(go.Scattergl(
+                x=point['scent_map_x'].tolist(), y=point['scent_map_y'].tolist(), mode='markers',
+                marker=dict(symbol='circle', size=diameter + 4, color='#2c2c2a', opacity=1,
+                            line=dict(width=0)),
+                hoverinfo='skip', showlegend=False, name='Recommendation outline',
+            ))
+            fig.add_trace(fill)
+            fig.add_trace(build_highlight_number_trace(point, ranks, scores))
         fig.update_layout(**highlight_zoom)
     return fig, len(coords)
 

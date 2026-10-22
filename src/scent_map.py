@@ -240,14 +240,14 @@ def build_highlight_trace(coords_df, ranks, scores=None):
     colors = coords_df['marker_rgb'].tolist() if 'marker_rgb' in coords_df else coords_df['plot_color'].tolist()
     return go.Scattergl(
         x=coords_df['scent_map_x'], y=coords_df['scent_map_y'], mode='markers',
-        marker=dict(size=[max(10, 25 - rank) for rank in values], color=colors,
-                    opacity=1, line=dict(color='#252525', width=3)),
-        text=[row['tooltip'] if 'tooltip' in coords_df else
+        marker=dict(size=[recommendation_marker_size(rank) for rank in values], color=colors,
+                    opacity=1, line=dict(color='#ffffff', width=2)),
+        hovertext=[row['tooltip'] if 'tooltip' in coords_df else
               f"<b>{escape(str(row['Name']))}</b><br>{escape(str(row['Brand']))}"
               for _, row in coords_df.iterrows()],
         customdata=[[rank, float(scores[identifier]) if scores is not None else None]
                     for identifier, rank in zip(coords_df['_id'], values)],
-        hovertemplate=("%{text}<br><br><b>순위:</b> %{customdata[0]}위"
+        hovertemplate=("%{hovertext}<br><br><b>순위:</b> %{customdata[0]}위"
                        + ("<br><b>유사도:</b> %{customdata[1]:.4f}" if scores is not None else "")
                        + "<extra></extra>"),
         hoverlabel=dict(align='left'), name='Recommendations', showlegend=False,
@@ -270,3 +270,116 @@ def compute_zoom_range(coords_df, padding=0.15):
             limits = [midpoint - span * (0.5 + padding), midpoint + span * (0.5 + padding)]
         ranges[f'{axis}axis'] = dict(range=limits, autorange=False)
     return ranges
+
+
+
+def recommendation_marker_size(rank):
+    """Pixel diameter: 24 minimum, with proportional differentiation at the top."""
+    return max(24.0, 2 * (9.0 + 0.55 * (10-min(10, max(1, rank)))))
+
+
+def rank_text_color(color):
+    """Choose white/charcoal by WCAG contrast against the actual opaque fill."""
+    if color.startswith('rgb('):
+        rgb = [float(v.strip()) / 255 for v in color[4:-1].split(',')]
+    elif color.startswith('hsl('):
+        h, sat, light = [float(v.strip().rstrip('%')) for v in color[4:-1].split(',')]
+        rgb = colorsys.hls_to_rgb((h % 360) / 360, light / 100, sat / 100)
+    elif color.startswith('#') and len(color) == 7:
+        rgb = [int(color[i:i+2], 16) / 255 for i in (1, 3, 5)]
+    else:
+        raise ValueError(f'Unsupported marker color: {color!r}')
+
+    def luminance(values):
+        linear = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in values]
+        return sum(v * weight for v, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+
+    background = luminance(rgb)
+    charcoal = luminance((44 / 255, 44 / 255, 42 / 255))
+    white_contrast = 1.05 / (background + 0.05)
+    dark_contrast = (max(background, charcoal) + 0.05) / (min(background, charcoal) + 0.05)
+    return '#2c2c2a' if dark_contrast >= white_contrast else '#ffffff'
+
+
+def build_highlight_number_trace(coords_df, ranks, scores=None):
+    """Text-only rank layer; original marker fill remains completely visible."""
+    trace = build_highlight_trace(coords_df, ranks, scores)
+    trace.mode = 'text'
+    colors = [rank_text_color(color) for color in trace.marker.color]
+    trace.text = [str(ranks[i]) for i in coords_df['_id']]
+    trace.textposition = 'middle center'
+    trace.textfont = dict(family='Georgia, Times New Roman, serif', size=13, color=colors, weight='bold')
+    return trace
+
+
+def build_rank_decorations(coords_df, ranks, background='#fafaf8'):
+    """Only the two point outlines; ranks now belong to the marker text trace."""
+    shapes = []
+    for row in coords_df.to_dict('records'):
+        x, y = float(row['scent_map_x']), float(row['scent_map_y'])
+        ring = recommendation_marker_size(ranks[row['_id']]) / 2 + 1
+        for color, width in (('#ffffff', 2), ('#2c2c2a', 1.5)):
+            shapes.append(dict(type='circle', xref='x', yref='y', xsizemode='pixel', ysizemode='pixel',
+                               xanchor=x, yanchor=y, x0=-ring, x1=ring, y0=-ring, y1=ring,
+                               line=dict(color=color, width=width), fillcolor='rgba(0,0,0,0)', layer='above'))
+    return shapes, [], coords_df[['scent_map_x','scent_map_y']].copy()
+
+
+
+def separate_recommendation_points(coords_df, ranks, plot_width=420, plot_height=490):
+    """Separate colliding highlight copies in estimated screen pixels only.
+
+    Original rows and cached background are never mutated. Spacing is for the
+    initial view; browser-only zoom/resize does not rerun this arrangement.
+    """
+    view = coords_df.copy(deep=True)
+    zoom = compute_zoom_range(coords_df, padding=0.35)
+    if len(view) < 2:
+        return view, zoom
+    scale = min(plot_width / (zoom['xaxis']['range'][1]-zoom['xaxis']['range'][0]),
+                plot_height / (zoom['yaxis']['range'][1]-zoom['yaxis']['range'][0]))
+    points = [(float(row.scent_map_x)*scale, float(row.scent_map_y)*scale)
+              for row in view.itertuples()]
+    sizes = [recommendation_marker_size(ranks[i])+4 for i in view['_id']]
+    parent = list(range(len(points)))
+    def find(i):
+        while parent[i] != i:
+            i = parent[i]
+        return i
+    for i in range(len(points)):
+        for j in range(i):
+            if math.dist(points[i],points[j]) < (sizes[i]+sizes[j])/2+3:
+                parent[find(i)] = find(j)
+    groups = {}
+    for i in range(len(points)):
+        groups.setdefault(find(i), []).append(i)
+    rendered = list(points)
+    for group in sorted(groups.values(), key=lambda g: min(ranks[view.iloc[i]['_id']] for i in g)):
+        if len(group) == 1:
+            continue
+        group.sort(key=lambda i: ranks[view.iloc[i]['_id']])
+        cx = sum(points[i][0] for i in group)/len(group)
+        cy = sum(points[i][1] for i in group)/len(group)
+        gap = max(sizes[i] for i in group)+3
+        radius = max(gap/(2*math.sin(math.pi/len(group))),
+                     max(math.dist(points[i], (cx,cy)) for i in group))
+        # Rotate first, then grow only if this cluster would hit another point.
+        chosen = None
+        for attempt in range(1200):
+            r = radius + (attempt//12)*3
+            phase = (attempt%12)*math.pi/6
+            candidates = [(cx+r*math.cos(phase+2*math.pi*k/len(group)),
+                           cy+r*math.sin(phase+2*math.pi*k/len(group))) for k in range(len(group))]
+            if all(math.dist(pos,rendered[j]) >= (sizes[i]+sizes[j])/2+3
+                   for i,pos in zip(group,candidates) for j in range(len(points)) if j not in group):
+                chosen = candidates
+                break
+        if chosen is None:
+            raise ValueError('Could not separate recommendation highlights within the search radius.')
+        for i,pos in zip(group,chosen):
+            rendered[i] = pos
+    for i,(original,pos) in enumerate(zip(points,rendered)):
+        if original != pos:
+            view.iloc[i,view.columns.get_loc('scent_map_x')] = pos[0]/scale
+            view.iloc[i,view.columns.get_loc('scent_map_y')] = pos[1]/scale
+    return view, zoom

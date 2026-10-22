@@ -16,7 +16,7 @@ import streamlit as st
 from src.scent_map import ACCORD_TO_SECTION, COLOR_HUE_ANCHOR, compute_scent_map
 from copy import deepcopy
 from src.recommender import build_accord_matrix, build_note_matrix, recommend
-from src.scent_map import get_coordinates, build_highlight_trace, compute_zoom_range
+from src.scent_map import get_coordinates, build_highlight_trace, compute_zoom_range, build_rank_decorations, build_highlight_number_trace, separate_recommendation_points
 from src.storage_data import DataLoadError, StorageClient
 
 
@@ -271,7 +271,7 @@ def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.
 
     fig.update_layout(
         autosize=True,
-        height=720,
+        height=560,
         paper_bgcolor=BACKGROUND,
         plot_bgcolor=BACKGROUND,
         margin=dict(l=55, r=55, t=35, b=35),
@@ -452,6 +452,7 @@ def get_display_cache(settings_key: tuple) -> dict:
     view["marker_border"] = view.marker_rgb.map(darker_border)
     view["marker_text"] = view.marker_rgb.map(contrast_text_color)
     template = build_figure(view.iloc[:0], section_angles).to_plotly_json()
+    template["layout"].update(height=560, autosize=True)  # Refresh shared layout cache.
     full_figure = fast_figure(view, template, "")
     return {"view": view, "template": template, "full_figure": full_figure, "section_angles": section_angles}
 
@@ -551,8 +552,15 @@ def recommendation_figure(cached, results):
     ranks = {item['id']: item['rank'] for item in results}
     coords = get_coordinates(list(ranks), cached['view'])
     if not coords.empty:
+        coords, highlight_zoom = separate_recommendation_points(coords, ranks)
         fig.add_trace(build_highlight_trace(coords, ranks, {item['id']: item['final_score'] for item in results}))
-        fig.update_layout(**compute_zoom_range(coords))
+        fig.add_trace(build_highlight_number_trace(coords, ranks, {item['id']: item['final_score'] for item in results}))
+        shapes, annotations, bounds = build_rank_decorations(coords, ranks, BACKGROUND)
+        for shape in shapes:
+            fig.add_shape(shape)
+        for annotation in annotations:
+            fig.add_annotation(annotation)
+        fig.update_layout(**highlight_zoom)
     return fig, len(coords)
 
 

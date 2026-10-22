@@ -224,3 +224,49 @@ def compute_scent_map(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     df["scent_map_y"] = y_coords
 
     return df, section_angles
+
+
+
+def get_coordinates(ids, df):
+    """Select existing finite coordinates, preserving DataFrame row order."""
+    return df.loc[df['_id'].isin(ids)].dropna(subset=['scent_map_x', 'scent_map_y']).copy()
+
+
+def build_highlight_trace(coords_df, ranks, scores=None):
+    """Reuse prepared detail HTML; ranks and optional scores are keyed by ID."""
+    import plotly.graph_objects as go
+    from html import escape
+    values = [ranks[identifier] for identifier in coords_df['_id']]
+    colors = coords_df['marker_rgb'].tolist() if 'marker_rgb' in coords_df else coords_df['plot_color'].tolist()
+    return go.Scattergl(
+        x=coords_df['scent_map_x'], y=coords_df['scent_map_y'], mode='markers',
+        marker=dict(size=[max(10, 25 - rank) for rank in values], color=colors,
+                    opacity=1, line=dict(color='#252525', width=3)),
+        text=[row['tooltip'] if 'tooltip' in coords_df else
+              f"<b>{escape(str(row['Name']))}</b><br>{escape(str(row['Brand']))}"
+              for _, row in coords_df.iterrows()],
+        customdata=[[rank, float(scores[identifier]) if scores is not None else None]
+                    for identifier, rank in zip(coords_df['_id'], values)],
+        hovertemplate=("%{text}<br><br><b>순위:</b> %{customdata[0]}위"
+                       + ("<br><b>유사도:</b> %{customdata[1]:.4f}" if scores is not None else "")
+                       + "<extra></extra>"),
+        hoverlabel=dict(align='left'), name='Recommendations', showlegend=False,
+    )
+
+
+def compute_zoom_range(coords_df, padding=0.15):
+    """Return Plotly axis updates; give singleton/coincident points a usable span."""
+    if padding < 0:
+        raise ValueError('padding must be nonnegative')
+    ranges = {}
+    for axis in ('x', 'y'):
+        values = coords_df[f'scent_map_{axis}'].dropna()
+        if values.empty:
+            limits = [-1.35, 1.35]
+        else:
+            low, high = float(values.min()), float(values.max())
+            span = max(high - low, 0.1)
+            midpoint = (low + high) / 2
+            limits = [midpoint - span * (0.5 + padding), midpoint + span * (0.5 + padding)]
+        ranges[f'{axis}axis'] = dict(range=limits, autorange=False)
+    return ranges

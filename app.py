@@ -14,12 +14,15 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.scent_map import ACCORD_TO_SECTION, COLOR_HUE_ANCHOR, compute_scent_map
+from copy import deepcopy
+from src.recommender import build_accord_matrix, build_note_matrix, recommend
+from src.scent_map import get_coordinates, build_highlight_trace, compute_zoom_range
 from src.storage_data import DataLoadError, StorageClient
 
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "processed" / "fragella_processed.csv"
 BACKGROUND = "#fafaf8"
-SCENT_DATA_VERSION = "rgb-chroma-2026-09-20-v3"
+SCENT_DATA_VERSION = "recommendation-2026-10-22-v4"
 
 
 def hsl_to_css(hue: float, saturation: float, lightness: float) -> str:
@@ -57,16 +60,10 @@ def data_settings() -> dict:
 
 
 @st.cache_data(ttl=86400, max_entries=2, show_spinner=False)
-def load_scent_map(
-    source: str, csv_path: str = "", url: str = "", service_key: str = "",
-    bucket: str = "prism-data", object_path: str = "fragella_processed.csv.gz",
-    version: str = "1",
-) -> tuple[pd.DataFrame, dict]:
-    """Share one download/calculation per settings across sessions for 24 hours.
-
-    All arguments participate in the cache key, including credentials and version.
-    No CSV bytes are persisted to disk by the app.
-    """
+def load_catalog(source: str, csv_path: str = "", url: str = "", service_key: str = "",
+                 bucket: str = "prism-data", object_path: str = "fragella_processed.csv.gz",
+                 version: str = "1") -> pd.DataFrame:
+    """Cache the entire catalog, including rows without wheel coordinates."""
     if source == "supabase":
         csv_input = BytesIO(StorageClient(url, service_key, bucket, object_path).download())
     elif source == "local":
@@ -77,9 +74,26 @@ def load_scent_map(
         raw_df = pd.read_csv(csv_input, compression="gzip" if source == "supabase" else "infer")
     except (OSError, ValueError, EOFError, zlib.error, pd.errors.ParserError):
         raise DataLoadError("CSV를 읽을 수 없습니다. 파일 경로, gzip 압축 상태, 인코딩 및 CSV 형식을 확인하세요.") from None
-    required = {"Name", "Brand", "Main Accords", "Main Accords Percentage"}
+    required = {"_id", "Notes", "Name", "Brand", "Main Accords", "Main Accords Percentage"}
     if not required.issubset(raw_df.columns):
         raise DataLoadError("CSV에 Name, Brand, Main Accords, Main Accords Percentage 컬럼이 필요합니다.")
+    if raw_df['_id'].isna().any() or raw_df['_id'].duplicated().any():
+        raise DataLoadError("향수 _id는 비어 있지 않고 고유해야 합니다.")
+    return raw_df
+
+
+@st.cache_data(ttl=86400, max_entries=2, show_spinner=False)
+def load_scent_map(
+    source: str, csv_path: str = "", url: str = "", service_key: str = "",
+    bucket: str = "prism-data", object_path: str = "fragella_processed.csv.gz",
+    version: str = "1",
+) -> tuple[pd.DataFrame, dict]:
+    """Share one download/calculation per settings across sessions for 24 hours.
+
+    All arguments participate in the cache key, including credentials and version.
+    No CSV bytes are persisted to disk by the app.
+    """
+    raw_df = load_catalog(source, csv_path, url, service_key, bucket, object_path, version)
     try:
         df, section_angles = compute_scent_map(raw_df)
     except ZeroDivisionError:
@@ -423,6 +437,8 @@ def main() -> None:
     render_navigation()
     if st.session_state.current_page == "scent_map":
         render_scent_map()
+    elif st.session_state.current_page == "recommendation":
+        render_recommendation()
 
 
 @st.cache_resource(show_spinner=False)
@@ -430,7 +446,7 @@ def get_display_cache(settings_key: tuple) -> dict:
     """Build the prepared view and full figure once per process, shared by sessions."""
     settings = dict(settings_key)
     df, section_angles = load_scent_map(**settings)
-    columns = ["Name", "Brand", "Gender", "Main Accords", "Notes", "scent_map_x", "scent_map_y", "plot_color"]
+    columns = ["_id", "Name", "Brand", "Gender", "Main Accords", "Notes", "scent_map_x", "scent_map_y", "plot_color"]
     view = prepare_view(df[columns], section_angles)
     view["marker_rgb"] = view.plot_color.map(marker_rgb)
     view["marker_border"] = view.marker_rgb.map(darker_border)
@@ -505,11 +521,84 @@ def render_scent_map() -> None:
             fig = cached["full_figure"]
         else:
             fig = fast_figure(visible, cached["template"], query)
-        st.plotly_chart(
-            fig, use_container_width=True, theme=None,
-            config={"scrollZoom": True, "displaylogo": False, "responsive": True,
-                    "staticPlot": False, "displayModeBar": True},
-        )
+        render_map_chart(fig, key="interactive_map")
+
+
+
+@st.cache_resource(show_spinner=False)
+def get_recommendation_cache(settings_key: tuple):
+    df = load_catalog(**dict(settings_key))
+    # Retain only fields required for ranking/search; matrices are shared across sessions.
+    accord_matrix = build_accord_matrix(df)
+    note_matrix = build_note_matrix(df)
+    return df[["_id", "Name", "Brand"]].copy(), accord_matrix, note_matrix
+
+
+def render_map_chart(fig, key):
+    """Shared renderer for both tabs."""
+    st.plotly_chart(fig, key=key, use_container_width=True, theme=None,
+                    config={"scrollZoom": True, "displaylogo": False, "responsive": True,
+                            "staticPlot": False, "displayModeBar": True})
+
+
+def recommendation_figure(cached, results):
+    # Never mutate the cache_resource figure shared by other users/tabs.
+    fig = deepcopy(cached["full_figure"])
+    # Background points stay visible but never compete with recommendations for hover.
+    # Clear hovertemplate too: it overrides hoverinfo when present.
+    for trace in fig.data:
+        trace.update(hovertemplate=None, hoverinfo="skip")
+    ranks = {item['id']: item['rank'] for item in results}
+    coords = get_coordinates(list(ranks), cached['view'])
+    if not coords.empty:
+        fig.add_trace(build_highlight_trace(coords, ranks, {item['id']: item['final_score'] for item in results}))
+        fig.update_layout(**compute_zoom_range(coords))
+    return fig, len(coords)
+
+
+@st.fragment
+def render_recommendation():
+    try:
+        settings_key = tuple(sorted(data_settings().items()))
+        with st.spinner("추천 데이터를 준비하는 중..."):
+            df, accords, notes = get_recommendation_cache(settings_key)
+    except DataLoadError as exc:
+        st.error(str(exc))
+        return
+    _, content, _ = st.columns([1, 8, 1])
+    with content:
+        query = st.text_input("향수 이름 또는 브랜드 검색", key="recommendation_search")
+        if not query.strip():
+            return
+        mask = (df.Name.fillna('').str.contains(query.strip(), case=False, regex=False) |
+                df.Brand.fillna('').str.contains(query.strip(), case=False, regex=False))
+        choices = df.loc[mask]
+        if choices.empty:
+            st.info("일치하는 향수가 없습니다.")
+            return
+        labels = {row['_id']: f"{row['Name']} · {row['Brand']} · {row['_id']}"
+                  for row in choices.to_dict('records')}
+        selected = st.selectbox("기준 향수 선택", list(labels), index=None,
+                                format_func=labels.get, key="recommendation_query")
+        if selected is None:
+            return
+        results = recommend(selected, df, accords, notes)
+        if not results:
+            st.info("추천할 향수가 없습니다.")
+            return
+        st.dataframe(pd.DataFrame([{"순위": r['rank'], "향수명": r['name'], "브랜드": r['brand'],
+                                   "유사도 점수": round(r['final_score'], 4)} for r in results]),
+                     hide_index=True, use_container_width=True)
+        st.caption("유사도 = accord 80% + 노트 20% · 점수는 선호 확률이 아닙니다.")
+        try:
+            with st.spinner("향수 데이터를 불러오고 지도를 계산하고 있습니다..."):
+                cached = get_display_cache(settings_key)
+            fig, mapped = recommendation_figure(cached, results)
+            if mapped < len(results):
+                st.caption(f"추천 {len(results)}개 중 지도 좌표가 있는 {mapped}개를 표시합니다.")
+            render_map_chart(fig, key="recommendation_map_" + str(selected))
+        except DataLoadError as exc:
+            st.error(str(exc))
 
 
 if __name__ == "__main__":

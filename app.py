@@ -3,11 +3,13 @@
 from html import escape
 from pathlib import Path
 import math
+import inspect
 import colorsys
 import ast
 import os
 import zlib
 from io import BytesIO
+from urllib.parse import urlsplit
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -512,13 +514,30 @@ def render_scent_map() -> None:
 
 
 
+def image_url_or_none(value):
+    """Keep valid HTTP(S) URLs; malformed values render as empty image cells."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    try:
+        parts = urlsplit(value)
+        return value if parts.scheme in {"http", "https"} and parts.hostname and not any(c.isspace() for c in value) else None
+    except ValueError:
+        return None
+
+
 @st.cache_resource(show_spinner=False)
 def get_recommendation_cache(settings_key: tuple):
     df = load_catalog(**dict(settings_key))
     # Retain only fields required for ranking/search; matrices are shared across sessions.
     accord_matrix = build_accord_matrix(df)
     note_matrix = build_note_matrix(df)
-    return df[["_id", "Name", "Brand"]].copy(), accord_matrix, note_matrix
+    catalog = df[["_id", "Name", "Brand"]].copy()
+    images = df["Image URL"] if "Image URL" in df else pd.Series(None, index=df.index)
+    # Invalid/missing URL values become empty cells; remote image availability
+    # is resolved by the browser and does not block recommendation calculation.
+    catalog["Image URL"] = images.map(image_url_or_none)
+    return catalog, accord_matrix, note_matrix
 
 
 def render_map_chart(fig, key):
@@ -590,9 +609,33 @@ def render_recommendation():
         if not results:
             st.info("추천할 향수가 없습니다.")
             return
-        st.dataframe(pd.DataFrame([{"순위": r['rank'], "향수명": r['name'], "브랜드": r['brand'],
-                                   "유사도 점수": round(r['final_score'], 4)} for r in results]),
-                     hide_index=True, use_container_width=True)
+        image_urls = df.set_index("_id")["Image URL"]
+        # Streamlit >=1.64 supports taller image rows; older local versions
+        # retain the default height rather than failing on an unknown argument.
+        row_options = {"row_height": 80} if "row_height" in inspect.signature(st.dataframe).parameters else {}
+        numeric_alignment = "alignment" in inspect.signature(st.column_config.NumberColumn).parameters
+        if numeric_alignment:
+            number_columns = {
+                "순위": st.column_config.TextColumn("순위", width=45, alignment="left"),
+                "유사도 점수": st.column_config.NumberColumn("유사도 점수", width=100, alignment="left", format="%.4f"),
+            }
+        else:
+            # Older Streamlit cannot align numeric cells. Text cells keep the
+            # requested left alignment; sorting these fallback columns is lexical.
+            number_columns = {
+                "순위": st.column_config.TextColumn("순위", width="small"),
+                "유사도 점수": st.column_config.TextColumn("유사도 점수", width="small"),
+            }
+        # Thin space (U+2009) adds a small visual inset without widening other columns.
+        st.dataframe(pd.DataFrame([{"순위": f"\u2009{r['rank']}",
+                                   "Image URL": image_urls.get(r['id']),
+                                   "향수명": r['name'], "브랜드": r['brand'],
+                                   "유사도 점수": round(r['final_score'], 4) if numeric_alignment
+                                   else f"{r['final_score']:.4f}"} for r in results]),
+                     column_order=["순위", "Image URL", "향수명", "브랜드", "유사도 점수"],
+                     column_config={"Image URL": st.column_config.ImageColumn("이미지", width="small"),
+                                    **number_columns},
+                     hide_index=True, use_container_width=True, **row_options)
         st.caption("유사도 = accord 80% + 노트 20% · 점수는 선호 확률이 아닙니다.")
         try:
             with st.spinner("향수 데이터를 불러오고 지도를 계산하고 있습니다..."):

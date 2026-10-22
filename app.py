@@ -17,12 +17,13 @@ from src.scent_map import ACCORD_TO_SECTION, COLOR_HUE_ANCHOR, compute_scent_map
 from copy import deepcopy
 from src.recommender import build_accord_matrix, build_note_matrix, recommend
 from src.scent_map import get_coordinates, build_highlight_trace, compute_zoom_range, build_rank_decorations, build_highlight_number_trace, separate_recommendation_points
+from src.scent_map import contrast_text_color as shared_contrast_text_color
 from src.storage_data import DataLoadError, StorageClient
 
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "processed" / "fragella_processed.csv"
 BACKGROUND = "#fafaf8"
-SCENT_DATA_VERSION = "name-cleanup-2026-10-23-v5"
+SCENT_DATA_VERSION = "unified-contrast-2026-10-23-v6"
 
 
 def hsl_to_css(hue: float, saturation: float, lightness: float) -> str:
@@ -207,12 +208,8 @@ def darker_border(color: str) -> str:
 
 
 def contrast_text_color(color: str) -> str:
-    """Choose black/white text from RGB relative luminance (threshold 128)."""
-    if not color.startswith("rgb("):
-        return "#000000"
-    r, g, b = (int(part.strip()) for part in color[4:-1].split(","))
-    luminance = 0.299 * r + 0.587 * g + 0.114 * b
-    return "#000000" if luminance >= 128 else "#FFFFFF"
+    """Use the shared WCAG contrast rule for all map tooltips and chips."""
+    return shared_contrast_text_color(color)
 
 
 def build_figure(df: pd.DataFrame, section_angles: dict, query: str = "") -> go.Figure:

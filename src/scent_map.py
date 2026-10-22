@@ -250,7 +250,10 @@ def build_highlight_trace(coords_df, ranks, scores=None):
         hovertemplate=("%{hovertext}<br><br><b>순위:</b> %{customdata[0]}위"
                        + ("<br><b>유사도:</b> %{customdata[1]:.4f}" if scores is not None else "")
                        + "<extra></extra>"),
-        hoverlabel=dict(align='left'), name='Recommendations', showlegend=False,
+        hoverlabel=dict(align='left', bgcolor=colors,
+                        font=dict(size=14, family='Georgia, Times New Roman, serif',
+                                  color=[contrast_text_color(color) for color in colors])),
+        name='Recommendations', showlegend=False,
     )
 
 
@@ -278,7 +281,7 @@ def recommendation_marker_size(rank):
     return max(24.0, 2 * (9.0 + 0.55 * (10-min(10, max(1, rank)))))
 
 
-def rank_text_color(color):
+def contrast_text_color(color):
     """Choose white/charcoal by WCAG contrast against the actual opaque fill."""
     if color.startswith('rgb('):
         rgb = [float(v.strip()) / 255 for v in color[4:-1].split(',')]
@@ -299,6 +302,11 @@ def rank_text_color(color):
     white_contrast = 1.05 / (background + 0.05)
     dark_contrast = (max(background, charcoal) + 0.05) / (min(background, charcoal) + 0.05)
     return '#2c2c2a' if dark_contrast >= white_contrast else '#ffffff'
+
+
+def rank_text_color(color):
+    """Compatibility wrapper; rank and tooltip colors share the same WCAG rule."""
+    return contrast_text_color(color)
 
 
 def build_highlight_number_trace(coords_df, ranks, scores=None):

@@ -25,7 +25,7 @@ from src.storage_data import DataLoadError, StorageClient
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "processed" / "fragella_processed.csv"
 BACKGROUND = "#fafaf8"
-SCENT_DATA_VERSION = "unified-contrast-2026-10-23-v6"
+SCENT_DATA_VERSION = "all-notes-2026-10-23-v7"
 
 
 def hsl_to_css(hue: float, saturation: float, lightness: float) -> str:

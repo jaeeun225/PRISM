@@ -26,12 +26,12 @@ def build_accord_matrix(df):
 
 
 def build_note_matrix(df):
-    """Top 400 notes by perfume document frequency; ties sorted alphabetically.
+    """All valid dataset notes, with deterministic alphabetical column order.
 
     A note occurs once per layer (multi-hot), accumulating across layers.
-    Unused columns are zero when the vocabulary has fewer than 400 notes.
+    Matrix width is exactly the number of distinct normalized note names.
     """
-    documents, frequency = [], Counter()
+    documents, note_names = [], set()
     for value in df['Notes']:
         notes = safe_eval(value) if isinstance(value, str) else value
         weighted = Counter()
@@ -42,15 +42,13 @@ def build_note_matrix(df):
             for name in names - {'', 'n/a', 'na', 'none', 'null'}:
                 weighted[name] += weight
         documents.append(weighted)
-        frequency.update(weighted.keys())
-    vocabulary = {name: i for i, (name, _) in enumerate(
-        sorted(frequency.items(), key=lambda item: (-item[1], item[0]))[:400])}
+        note_names.update(weighted.keys())
+    vocabulary = {name: i for i, name in enumerate(sorted(note_names))}
     rows, cols, values = [], [], []
     for row, weighted in enumerate(documents):
         for name, weight in weighted.items():
-            if name in vocabulary:
-                rows.append(row); cols.append(vocabulary[name]); values.append(weight)
-    return csr_matrix((values, (rows, cols)), shape=(len(df), 400), dtype=np.float32)
+            rows.append(row); cols.append(vocabulary[name]); values.append(weight)
+    return csr_matrix((values, (rows, cols)), shape=(len(df), len(vocabulary)), dtype=np.float32)
 
 
 def normalize_name(name, brand):
@@ -65,8 +63,8 @@ def normalize_name(name, brand):
 
 
 def recommend(query_id, df, accord_matrix, note_matrix, top_n=10):
-    if accord_matrix.shape != (len(df), 14) or note_matrix.shape != (len(df), 400):
-        raise ValueError('Matrices must align with df rows and have 14/400 columns.')
+    if accord_matrix.shape != (len(df), 14) or note_matrix.ndim != 2 or note_matrix.shape[0] != len(df):
+        raise ValueError('Matrices must align with df rows; accord matrix must have 14 columns.')
     matches = np.flatnonzero(df['_id'].to_numpy() == query_id)
     if len(matches) != 1:
         raise ValueError('query_id must identify exactly one row.')
@@ -74,7 +72,8 @@ def recommend(query_id, df, accord_matrix, note_matrix, top_n=10):
         return []
     index = int(matches[0])
     accord = cosine_similarity(accord_matrix[index:index+1], accord_matrix).ravel()
-    notes = cosine_similarity(note_matrix[index:index+1], note_matrix).ravel()
+    notes = (cosine_similarity(note_matrix[index:index+1], note_matrix).ravel()
+             if note_matrix.shape[1] else np.zeros(len(df), dtype=np.float32))
     scores = .8 * accord + .2 * notes
     seen, results = set(), []
     # Stable order resolves exact score ties by original row order.

@@ -636,7 +636,7 @@ def render_recommendation():
                      column_config={"Image URL": st.column_config.ImageColumn("이미지", width="small"),
                                     **number_columns},
                      hide_index=True, use_container_width=True, **row_options)
-        st.caption("유사도 = accord 80% + 노트 20% · 점수는 선호 확률이 아닙니다.")
+        st.caption("· 유사도 = accord 80% + 노트 20%")
         try:
             with st.spinner("향수 데이터를 불러오고 지도를 계산하고 있습니다..."):
                 cached = get_display_cache(settings_key)

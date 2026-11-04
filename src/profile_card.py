@@ -116,7 +116,12 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None):
         if bottle is not None:
             image.paste(bottle, (round(center-bottle.width/2), 230+(140-bottle.height)//2), bottle)
         else:
-            draw.text((center, 300), 'Image unavailable', anchor='mm', fill='#2c2c2a', font=font(19))
+            # Quiet bottle silhouette, shared by the on-screen card and PNG.
+            ghost = _mix('#FFFFFF', PERIWINKLE, .20)
+            draw.rounded_rectangle((center-32, 274, center+32, 346), radius=9, fill=ghost)
+            draw.rectangle((center-13, 258, center+13, 275), fill=ghost)
+            draw.rounded_rectangle((center-18, 247, center+18, 259), radius=3,
+                                   fill=_mix('#FFFFFF', PERIWINKLE, .32))
         y = 400
         for text in lines[0]:
             draw.text((center, y), text, anchor='mt', fill=fg, font=name_font)

@@ -4,6 +4,7 @@ import hashlib
 import zlib
 from http.client import HTTPException
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 import streamlit as st
@@ -28,23 +29,60 @@ def profile_context(settings_key, map_logic, _artifact_loader, _fallback_loader)
 
 
 @st.cache_data(ttl=86400, max_entries=128, show_spinner=False)
+def _fetch_bottle_cached(url):
+    """Cache verified successes only; transient failures must remain retryable."""
+    from PIL import Image
+    for attempt in range(2):
+        try:
+            request = Request(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                              '(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+                'Accept': 'image/webp,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5',
+            })
+            with urlopen(request, timeout=5) as response:
+                data = response.read(8_000_001)
+            if len(data) > 8_000_000:
+                raise ValueError('Bottle image exceeds size limit')
+            with Image.open(BytesIO(data)) as image:
+                if image.width * image.height > 16_000_000:
+                    raise ValueError('Bottle image exceeds pixel limit')
+                image.verify()
+            return data
+        except HTTPError as exc:
+            if exc.code not in (408, 429) and exc.code < 500:
+                break
+        except (URLError, TimeoutError, OSError, ValueError, HTTPException, Image.DecompressionBombError):
+            pass
+    # Streamlit does not cache exceptions. The public wrapper renders a fallback.
+    raise OSError('Bottle image unavailable')
+
+
 def fetch_bottle(url):
     if not url or not isinstance(url, str):
         return None
     try:
-        request = Request(url, headers={'User-Agent': 'PRISM-Profile/1.0'})
-        with urlopen(request, timeout=4) as response:
-            data = response.read(8_000_001)
-        return data if len(data) <= 8_000_000 else None
-    except (HTTPError, URLError, TimeoutError, OSError, ValueError, HTTPException):
-        # An unavailable CDN image must not block a usable profile/PNG.
+        parts = urlsplit(url)
+        if parts.hostname == 'cdn.fragella.com':
+            # Fragella filenames contain literal # and +; neither is URL syntax here.
+            parts = urlsplit(url.replace('#', '%23'))
+        if parts.scheme not in ('http', 'https'):
+            return None
+        url = urlunsplit((parts.scheme, parts.netloc, quote(parts.path, safe='/%'), parts.query, ''))
+        return _fetch_bottle_cached(url)
+    except (OSError, ValueError):
         return None
 
 
 @st.cache_data(ttl=86400, max_entries=32, show_spinner=False)
-def profile_png(profile, signatures, version):
+def _profile_png_cached(profile, signatures, version, bottle_images):
     from .profile_card import render_card_png
-    return render_card_png(profile, signatures, [fetch_bottle(row['image_url']) for row in signatures])
+    return render_card_png(profile, signatures, bottle_images)
+
+
+def profile_png(profile, signatures, version):
+    # Include image bytes in the PNG key so an earlier missing image cannot stick.
+    return _profile_png_cached(profile, signatures, version,
+                               [fetch_bottle(row['image_url']) for row in signatures])
 
 
 @st.cache_resource(max_entries=2, show_spinner=False)
@@ -78,18 +116,34 @@ def profile_label_metadata(settings_key, duplicate_ids):
         return {}
 
 
+def reset_profile_picker(clear_search=False):
+    for key in list(st.session_state):
+        if key.startswith('profile_candidate_'):
+            del st.session_state[key]
+    # Discard any delayed client value from the old (possibly disabled) picker.
+    st.session_state.profile_picker_generation = st.session_state.get('profile_picker_generation', 0) + 1
+    if clear_search:
+        st.session_state.profile_search = ''
+
+
 def add_signature(choice_key, allowed_ids):
     # The search widget is only an add candidate, never the canonical selection.
     selected = st.session_state.get(choice_key)
     values = list(st.session_state.get('profile_signatures', []))
     if selected in allowed_ids and selected not in values and len(values) < MAX_SIGNATURES:
         values.append(selected)
-    save_selection(values)
-    st.session_state[choice_key] = None
+        save_selection(values)
+        reset_profile_picker(clear_search=True)
 
 
 def remove_signature(identifier):
     save_selection([value for value in st.session_state.get('profile_signatures', []) if value != identifier])
+    reset_profile_picker()
+
+
+def reset_profile():
+    save_selection([])  # Keeps prism_page=profile and unrelated URL parameters.
+    reset_profile_picker(clear_search=True)
 
 
 def render_profile(*, settings_factory, recommendation_loader, recommendation_logic,
@@ -128,7 +182,8 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
         with controls, st.container(key='profile_controls'):
             st.subheader('My Profile')
             st.caption('향수를 검색해 최대 3개까지 추가하세요.')
-            query = st.text_input('향수 이름 또는 브랜드 검색', key='profile_search')
+            query = st.text_input('향수 이름 또는 브랜드 검색', key='profile_search',
+                                  on_change=reset_profile_picker)
             index = profile_label_index(settings_key, recommendation_logic, catalog)
             matches = find_perfumes(catalog, query) if query.strip() else catalog.iloc[:0]
             relevant = set(matches['_id']) | set(values)
@@ -145,7 +200,7 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
                 else:
                     choice_ids = sorted_choices(index, choices['_id'])
                     suffix = hashlib.sha256(query.strip().casefold().encode()).hexdigest()[:12]
-                    choice_key = 'profile_candidate_' + suffix
+                    choice_key = f"profile_candidate_{suffix}_{st.session_state.get('profile_picker_generation', 0)}"
                     candidate = st.selectbox('추가할 시그니처 향수', choice_ids, index=None,
                                              format_func=labels.get, key=choice_key,
                                              disabled=len(values) >= MAX_SIGNATURES)
@@ -158,6 +213,7 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
                     for identifier in values:
                         st.button(labels[identifier] + ' ×', key=f'profile_remove_{identifier}',
                                   use_container_width=False, on_click=remove_signature, args=(identifier,))
+                st.button('↻ 처음부터 다시', key='profile_reset', on_click=reset_profile)
             st.caption('최대 3개 · URL 북마크로 프로필 다시 열기')
         with preview, st.container(key='profile_preview'):
             if not values:
@@ -178,15 +234,13 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
                                        brand=row['Brand'] if isinstance(row['Brand'], str) else '', image_url=row['Image URL'])
                                   for identifier, row in selected.iterrows()]
                     png = profile_png(profile, signatures, (dict(settings_key)['version'], map_logic,
-                                                            recommendation_logic, 'profile-v4-clean-labels'))
+                                                            recommendation_logic, 'profile-v5-images-picker'))
             except DataLoadError as exc:
                 st.error(str(exc))
                 return
             st.image(BytesIO(png), use_container_width=True)
             st.download_button('Download profile PNG', data=png, file_name='prism-scent-profile.png',
                                mime='image/png', type='primary', on_click='ignore')
-            st.caption('Top accords: ' + ', '.join(f"{item['section']} {item['percent']:.1f}%" for item in profile['sections']))
-            st.caption('Top notes: ' + ', '.join(item['name'] for item in profile['notes']))
             if profile['color_source'] == 'dominant_section':
                 st.caption(f"향 계열이 서로 상쇄되는 조합이라 {profile['color_section']} 계열색을 대표색으로 사용했습니다.")
             if profile['unmapped_count']:

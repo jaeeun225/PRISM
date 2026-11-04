@@ -21,10 +21,12 @@ from src.recommender import build_accord_matrix, build_note_matrix, recommend
 from src.scent_map import get_coordinates, build_highlight_trace, compute_zoom_range, build_rank_decorations, build_highlight_number_trace, separate_recommendation_points
 from src.scent_map import contrast_text_color as shared_contrast_text_color
 from src.storage_data import DataLoadError, StorageClient
+from src.map_artifact import MAP_COLUMNS, logic_version, load_artifact_or_none
 
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "processed" / "fragella_processed.csv"
 BACKGROUND = "#fafaf8"
+MAP_LOGIC_VERSION = logic_version(Path(__file__).resolve().parent)
 SCENT_DATA_VERSION = "all-notes-2026-10-23-v7"
 
 
@@ -99,7 +101,7 @@ def get_catalog(source: str, csv_path: str = "", url: str = "", service_key: str
 def load_scent_map(
     source: str, csv_path: str = "", url: str = "", service_key: str = "",
     bucket: str = "prism-data", object_path: str = "fragella_processed.csv.gz",
-    version: str = "1",
+    version: str = "1", calculation_logic: str = "",
 ) -> tuple[pd.DataFrame, dict]:
     """Share one download/calculation per settings across sessions for 24 hours.
 
@@ -442,16 +444,24 @@ def main() -> None:
         render_recommendation()
 
 
+@st.cache_data(ttl=86400, max_entries=2, show_spinner=False)
+def load_map_artifact(settings_key: tuple, artifact_logic: str):
+    return load_artifact_or_none(dict(settings_key), artifact_logic, Path(__file__).resolve().parent)
+
+
 @st.cache_resource(show_spinner=False)
-def get_display_cache(settings_key: tuple) -> dict:
-    """Build the prepared view and full figure once per process, shared by sessions."""
+def get_display_cache(settings_key: tuple, artifact_logic: str = MAP_LOGIC_VERSION) -> dict:
+    """Prefer validated Parquet; retain the original calculation as fallback."""
     settings = dict(settings_key)
-    df, section_angles = load_scent_map(**settings)
-    columns = ["_id", "Name", "Brand", "Gender", "Main Accords", "Notes", "scent_map_x", "scent_map_y", "plot_color"]
-    view = prepare_view(df[columns], section_angles)
-    view["marker_rgb"] = view.plot_color.map(marker_rgb)
-    view["marker_border"] = view.marker_rgb.map(darker_border)
-    view["marker_text"] = view.marker_rgb.map(contrast_text_color)
+    artifact = load_map_artifact(settings_key, artifact_logic)
+    if artifact is None:
+        df, section_angles = load_scent_map(**settings, calculation_logic=artifact_logic)
+        view = prepare_view(df[MAP_COLUMNS], section_angles)
+        view["marker_rgb"] = view.plot_color.map(marker_rgb)
+        view["marker_border"] = view.marker_rgb.map(darker_border)
+        view["marker_text"] = view.marker_rgb.map(contrast_text_color)
+    else:
+        view, section_angles = artifact
     template = build_figure(view.iloc[:0], section_angles).to_plotly_json()
     template["layout"].update(height=560, autosize=True)  # Refresh shared layout cache.
     full_figure = fast_figure(view, template, "")
@@ -464,7 +474,7 @@ def render_scent_map() -> None:
         settings = data_settings()
         settings_key = tuple(sorted(settings.items()))
         with st.spinner("향수 데이터를 불러오고 지도를 계산하고 있습니다..."):
-            cached = get_display_cache(settings_key)
+            cached = get_display_cache(settings_key, MAP_LOGIC_VERSION)
         view = cached["view"]
     except DataLoadError as exc:
         st.error(str(exc))
@@ -652,7 +662,7 @@ def render_recommendation():
         st.caption("· 유사도 = accord 80% + 노트 20%")
         try:
             with st.spinner("향수 데이터를 불러오고 지도를 계산하고 있습니다..."):
-                cached = get_display_cache(settings_key)
+                cached = get_display_cache(settings_key, MAP_LOGIC_VERSION)
             fig, mapped = recommendation_figure(cached, results)
             if mapped < len(results):
                 st.caption(f"추천 {len(results)}개 중 지도 좌표가 있는 {mapped}개를 표시합니다.")

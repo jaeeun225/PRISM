@@ -4,8 +4,6 @@ import re
 import unicodedata
 
 import numpy as np
-from scipy.sparse import csr_matrix
-from sklearn.metrics.pairwise import cosine_similarity
 
 from .scent_map import ACCORD_TO_SECTION, SECTION_ORDER, STRENGTH_WEIGHT, safe_eval
 
@@ -31,6 +29,8 @@ def build_note_matrix(df):
     A note occurs once per layer (multi-hot), accumulating across layers.
     Matrix width is exactly the number of distinct normalized note names.
     """
+    from scipy.sparse import csr_matrix
+
     documents, note_names = [], set()
     for value in df['Notes']:
         notes = safe_eval(value) if isinstance(value, str) else value
@@ -63,6 +63,8 @@ def normalize_name(name, brand):
 
 
 def recommend(query_id, df, accord_matrix, note_matrix, top_n=10):
+    from sklearn.metrics.pairwise import cosine_similarity
+
     if accord_matrix.shape != (len(df), 14) or note_matrix.ndim != 2 or note_matrix.shape[0] != len(df):
         raise ValueError('Matrices must align with df rows; accord matrix must have 14 columns.')
     matches = np.flatnonzero(df['_id'].to_numpy() == query_id)

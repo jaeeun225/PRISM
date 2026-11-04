@@ -219,3 +219,7 @@ __marimo__/
 data/external/bigPerfumes.csv
 data/raw/fragella_raw.csv
 data/processed/
+
+# Private computed map data; never commit licensed content.
+/data/artifacts/
+**/scent-map-*.parquet

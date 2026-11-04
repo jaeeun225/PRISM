@@ -85,6 +85,16 @@ def load_catalog(source: str, csv_path: str = "", url: str = "", service_key: st
     return raw_df
 
 
+def get_catalog(source: str, csv_path: str = "", url: str = "", service_key: str = "",
+                bucket: str = "prism-data", object_path: str = "fragella_processed.csv.gz",
+                version: str = "1") -> pd.DataFrame:
+    """Canonical cache call: include every default in one fixed keyword order."""
+    return load_catalog(
+        source=source, csv_path=csv_path, url=url, service_key=service_key,
+        bucket=bucket, object_path=object_path, version=version,
+    )
+
+
 @st.cache_data(ttl=86400, max_entries=2, show_spinner=False)
 def load_scent_map(
     source: str, csv_path: str = "", url: str = "", service_key: str = "",
@@ -96,7 +106,10 @@ def load_scent_map(
     All arguments participate in the cache key, including credentials and version.
     No CSV bytes are persisted to disk by the app.
     """
-    raw_df = load_catalog(source, csv_path, url, service_key, bucket, object_path, version)
+    raw_df = get_catalog(
+        source=source, csv_path=csv_path, url=url, service_key=service_key,
+        bucket=bucket, object_path=object_path, version=version,
+    )
     try:
         df, section_angles = compute_scent_map(raw_df)
     except ZeroDivisionError:
@@ -528,7 +541,7 @@ def image_url_or_none(value):
 
 @st.cache_resource(show_spinner=False)
 def get_recommendation_cache(settings_key: tuple):
-    df = load_catalog(**dict(settings_key))
+    df = get_catalog(**dict(settings_key))
     # Retain only fields required for ranking/search; matrices are shared across sessions.
     accord_matrix = build_accord_matrix(df)
     note_matrix = build_note_matrix(df)

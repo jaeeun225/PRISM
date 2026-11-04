@@ -92,7 +92,7 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None):
     note_text = '  /  '.join(note['name'] for note in profile['notes']) or 'No note information available'
     note_lines = _wrap(note_text, font(29), width-2*margin)
     footer_y = notes_y + 43 + len(note_lines)*36 + 22
-    image = Image.new('RGB', (width, footer_y + 80), bg)
+    image = Image.new('RGB', (width, footer_y + 55), bg)
     draw = ImageDraw.Draw(image)
     draw.text((margin, 30), 'PRISM', fill=fg, font=font(34, True))
     draw.line((margin, 78, width-margin, 78), fill=PERIWINKLE, width=5)
@@ -144,10 +144,6 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None):
     draw.text((margin, footer_y), 'A portrait of your fragrance taste', fill=fg, font=font(23))
     draw.text((width-margin, footer_y), f"{len(signatures)} SIGNATURE" + ('S' if len(signatures)>1 else ''),
               anchor='rt', fill=fg, font=font(23, True))
-    if profile.get('map_background'):
-        draw.rounded_rectangle((margin, footer_y+35, margin+22, footer_y+57), radius=5,
-                               fill=profile['map_background'], outline=fg, width=1)
-        draw.text((margin+32, footer_y+36), 'Scent Map color', fill=fg, font=font(19))
     buffer = BytesIO()
     image.save(buffer, format='PNG', optimize=True)
     return buffer.getvalue()

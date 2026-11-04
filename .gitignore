@@ -223,3 +223,6 @@ data/processed/
 # Private computed map data; never commit licensed content.
 /data/artifacts/
 **/scent-map-*.parquet
+
+# Private recommendation matrices/catalog; never commit licensed content.
+**/recommendation-*.zip

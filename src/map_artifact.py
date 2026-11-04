@@ -3,6 +3,7 @@ import ast
 import hashlib
 from io import BytesIO
 import json
+import logging
 from pathlib import Path
 import re
 
@@ -10,7 +11,29 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from .storage_data import StorageClient, DataLoadError
+from .storage_data import StorageClient, DataLoadError, StorageError
+
+LOGGER = logging.getLogger('streamlit.prism.map_artifact')
+LOGGER.setLevel(logging.INFO)
+if not LOGGER.handlers:
+    LOGGER.addHandler(logging.StreamHandler())
+LOGGER.propagate = False
+
+
+class ArtifactVersionMismatch(ValueError):
+    """Stored metadata does not match the requested data/calculation version."""
+
+
+def function_source(source, names):
+    """Hash source text, not ast.dump(), whose format changes across Python versions."""
+    source = source.replace('\r\n', '\n').replace('\r', '\n')
+    lines = source.splitlines(keepends=True)
+    selected = []
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.FunctionDef) and node.name in names:
+            start = min([node.lineno] + [item.lineno for item in node.decorator_list])
+            selected.append(''.join(lines[start - 1:node.end_lineno]))
+    return '\n'.join(selected).encode('utf-8')
 
 SCHEMA_VERSION = 1
 MAP_COLUMNS = ['_id', 'Name', 'Brand', 'Gender', 'Main Accords', 'Notes',
@@ -24,11 +47,9 @@ def logic_version(root):
     """Fingerprint actual calculation/preparation code, not an operator's guess."""
     root = Path(root)
     functions = {'hsl_to_css', 'marker_rgb', 'darker_border', 'contrast_text_color', 'prepare_view'}
-    tree = ast.parse((root/'app.py').read_text(encoding='utf-8'))
-    selected = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in functions]
     # Normalize platform line endings so Windows-built files work on Cloud/Linux.
     digest = hashlib.sha256((root/'src/scent_map.py').read_text(encoding='utf-8').encode())
-    digest.update(ast.dump(ast.Module(body=selected, type_ignores=[])).encode())
+    digest.update(function_source((root/'app.py').read_text(encoding='utf-8'), functions))
     digest.update(Path(__file__).read_text(encoding='utf-8').encode())
     return digest.hexdigest()[:16]
 
@@ -57,7 +78,7 @@ def read_artifact(data, settings, logic):
     expected = {'schema': SCHEMA_VERSION, 'version': settings['version'], 'logic': logic,
                 'source': settings['source'], 'object_path': settings.get('object_path', '')}
     if any(metadata.get(key) != value for key, value in expected.items()):
-        raise ValueError('Map artifact version mismatch')
+        raise ArtifactVersionMismatch('Map artifact version mismatch')
     if not REQUIRED_COLUMNS.issubset(table.column_names):
         raise ValueError('Incomplete map artifact')
     view = table.to_pandas()
@@ -78,8 +99,19 @@ def fetch_artifact(settings, logic, root):
 
 
 def load_artifact_or_none(settings, logic, root):
+    name = artifact_filename(settings['version'], logic)
     try:
-        return read_artifact(fetch_artifact(settings, logic, root), settings, logic)
-    except (DataLoadError, OSError, ValueError, KeyError, TypeError, pa.ArrowException):
-        # Fall back without changing the existing UI or exposing credentials.
+        data = fetch_artifact(settings, logic, root)
+    except (DataLoadError, OSError) as exc:
+        missing = isinstance(exc, FileNotFoundError) or (isinstance(exc, StorageError) and exc.status == 404)
+        reason = 'missing' if missing else 'download_error'
+        LOGGER.warning('map artifact: fallback (reason=%s, file=%s, error=%s)', reason, name, type(exc).__name__)
         return None
+    try:
+        result = read_artifact(data, settings, logic)
+    except (OSError, ValueError, KeyError, TypeError, pa.ArrowException) as exc:
+        reason = 'version_mismatch' if isinstance(exc, ArtifactVersionMismatch) else 'read_error'
+        LOGGER.warning('map artifact: fallback (reason=%s, file=%s, error=%s)', reason, name, type(exc).__name__)
+        return None
+    LOGGER.info('map artifact: loaded (file=%s, %s rows)', name, len(result[0]))
+    return result

@@ -22,11 +22,16 @@ from src.scent_map import get_coordinates, build_highlight_trace, compute_zoom_r
 from src.scent_map import contrast_text_color as shared_contrast_text_color
 from src.storage_data import DataLoadError, StorageClient
 from src.map_artifact import MAP_COLUMNS, logic_version, load_artifact_or_none
+from src.recommendation_artifact import (
+    logic_version as recommendation_logic_version,
+    load_artifact_or_none as load_recommendation_artifact_or_none,
+)
 
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "processed" / "fragella_processed.csv"
 BACKGROUND = "#fafaf8"
 MAP_LOGIC_VERSION = logic_version(Path(__file__).resolve().parent)
+RECOMMENDATION_LOGIC_VERSION = recommendation_logic_version(Path(__file__).resolve().parent)
 SCENT_DATA_VERSION = "all-notes-2026-10-23-v7"
 
 
@@ -550,8 +555,14 @@ def image_url_or_none(value):
 
 
 @st.cache_resource(show_spinner=False)
-def get_recommendation_cache(settings_key: tuple):
-    df = get_catalog(**dict(settings_key))
+def get_recommendation_cache(settings_key: tuple, artifact_logic: str = RECOMMENDATION_LOGIC_VERSION):
+    settings = dict(settings_key)
+    artifact = load_recommendation_artifact_or_none(
+        settings, artifact_logic, Path(__file__).resolve().parent,
+    )
+    if artifact is not None:
+        return artifact
+    df = get_catalog(**settings)
     # Retain only fields required for ranking/search; matrices are shared across sessions.
     accord_matrix = build_accord_matrix(df)
     note_matrix = build_note_matrix(df)
@@ -571,12 +582,18 @@ def render_map_chart(fig, key):
 
 
 def recommendation_figure(cached, results):
-    # Never mutate the cache_resource figure shared by other users/tabs.
-    fig = deepcopy(cached["full_figure"])
-    # Background points stay visible but never compete with recommendations for hover.
-    # Clear hovertemplate too: it overrides hoverinfo when present.
-    for trace in fig.data:
-        trace.update(hovertemplate=None, hoverinfo="skip")
+    # Copy public JSON data instead of deepcopy(Figure), which revalidates all
+    # 38k points and their unused hoverlabel color arrays. Background hover is
+    # disabled here; keep full detail only on the recommendation highlights.
+    # The cached interactive figure and its hover payload remain untouched.
+    background = []
+    for trace in cached["full_figure"].data:
+        payload = trace.to_plotly_json()
+        for name in ("hovertext", "hovertemplate", "hoverlabel", "customdata"):
+            payload.pop(name, None)
+        payload["hoverinfo"] = "skip"
+        background.append(payload)
+    fig = go.Figure(data=background, layout=cached["full_figure"].layout.to_plotly_json())
     ranks = {item['id']: item['rank'] for item in results}
     coords = get_coordinates(list(ranks), cached['view'])
     if not coords.empty:
@@ -607,7 +624,7 @@ def render_recommendation():
     try:
         settings_key = tuple(sorted(data_settings().items()))
         with st.spinner("추천 데이터를 준비하는 중..."):
-            df, accords, notes = get_recommendation_cache(settings_key)
+            df, accords, notes = get_recommendation_cache(settings_key, RECOMMENDATION_LOGIC_VERSION)
     except DataLoadError as exc:
         st.error(str(exc))
         return

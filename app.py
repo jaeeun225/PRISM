@@ -375,7 +375,11 @@ def render_accord_chips(selected: list[str]) -> None:
 
 
 def navigate(page: str) -> None:
+    previous = st.session_state.get('current_page')
     st.session_state.current_page = page
+    if page == 'profile' or previous == 'profile':
+        from src.profile_state import set_profile_route
+        set_profile_route(page == 'profile')
 
 
 def render_navigation() -> None:
@@ -440,13 +444,24 @@ def main() -> None:
         "[data-baseweb='select'] input[placeholder] {min-width:8rem!important;}"
         "</style>",
     )
-    if "current_page" not in st.session_state:
-        st.session_state.current_page = "home"
+    from src.profile_state import restore_route
+    restore_route()
     render_navigation()
     if st.session_state.current_page == "scent_map":
         render_scent_map()
     elif st.session_state.current_page == "recommendation":
         render_recommendation()
+    elif st.session_state.current_page == "profile":
+        from src.profile_page import render_profile
+        render_profile(
+            settings_factory=data_settings,
+            recommendation_loader=get_recommendation_cache,
+            recommendation_logic=RECOMMENDATION_LOGIC_VERSION,
+            map_artifact_loader=load_map_artifact,
+            map_logic=MAP_LOGIC_VERSION,
+            map_fallback_loader=load_scent_map,
+            catalog_loader=get_catalog,
+        )
 
 
 @st.cache_data(ttl=86400, max_entries=2, show_spinner=False)
@@ -633,14 +648,12 @@ def render_recommendation():
         query = st.text_input("향수 이름 또는 브랜드 검색", key="recommendation_search")
         if not query.strip():
             return
-        mask = (df.Name.fillna('').str.contains(query.strip(), case=False, regex=False) |
-                df.Brand.fillna('').str.contains(query.strip(), case=False, regex=False))
-        choices = df.loc[mask]
+        from src.catalog_search import find_perfumes, perfume_labels
+        choices = find_perfumes(df, query)
         if choices.empty:
             st.info("일치하는 향수가 없습니다.")
             return
-        labels = {row['_id']: f"{row['Name']} · {row['Brand']} · {row['_id']}"
-                  for row in choices.to_dict('records')}
+        labels = perfume_labels(choices)
         selected = st.selectbox("기준 향수 선택", list(labels), index=None,
                                 format_func=labels.get, key="recommendation_query")
         if selected is None:

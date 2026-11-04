@@ -2,6 +2,8 @@
 from io import BytesIO
 from pathlib import Path
 import os
+import logging
+from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter, ImageChops
 
@@ -9,11 +11,27 @@ PERIWINKLE = '#6E7BC9'
 
 
 def serif_font(size, bold=False, font_dirs=None):
-    """Windows -> Linux serif fonts -> Pillow's readable built-in fallback.
+    directories = None if font_dirs is None else tuple(str(path) for path in font_dirs)
+    return _serif_font_cached(size, bold, directories)
 
-    Explicit font_dirs is also useful for testing Linux-like and fontless hosts
-    without installing anything or changing the system font configuration.
+
+@lru_cache(maxsize=1)
+def _warn_bundled_font():
+    logging.getLogger(__name__).warning('Bundled Gelasio font unavailable; using system serif fallback.')
+
+
+@lru_cache(maxsize=64)
+def _serif_font_cached(size, bold=False, font_dirs=None):
+    """Bundled Gelasio -> Windows/Linux serif -> Pillow fallback, cached by size/weight.
+
+    Explicit font_dirs restricts system fallbacks for tests; bundled fonts still
+    have priority without depending on the system font configuration.
     """
+    bundled = Path(__file__).resolve().parents[1]/'assets/fonts'/('Gelasio-Bold.ttf' if bold else 'Gelasio-Regular.ttf')
+    try:
+        return ImageFont.truetype(str(bundled), size)
+    except (OSError, ValueError):
+        _warn_bundled_font()
     names = (['georgiab.ttf', 'timesbd.ttf', 'DejaVuSerif-Bold.ttf', 'LiberationSerif-Bold.ttf']
              if bold else ['georgia.ttf', 'times.ttf', 'DejaVuSerif.ttf', 'LiberationSerif-Regular.ttf'])
     directories = font_dirs if font_dirs is not None else [
@@ -69,6 +87,22 @@ def _mix(color, other, amount):
     left = [int(color[i:i+2], 16) for i in (1, 3, 5)]
     right = [int(other[i:i+2], 16) for i in (1, 3, 5)]
     return tuple(round(a * (1-amount) + b * amount) for a, b in zip(left, right))
+
+
+def balanced_name_lines(value, font, width):
+    """Balance two complete lines; fall back to existing wrapping/ellipsis for long names."""
+    value = ' '.join(str(value or '').split())
+    if font.getlength(value) <= width:
+        return [value] if value else []
+    words = value.split()
+    candidates = []
+    for split in range(1, len(words)):
+        left, right = ' '.join(words[:split]), ' '.join(words[split:])
+        lw, rw = font.getlength(left), font.getlength(right)
+        if max(lw, rw) <= width:
+            orphan = 1 if len(words) >= 4 and min(split, len(words)-split) == 1 else 0
+            candidates.append(((orphan, abs(lw-rw), abs(split-(len(words)-split))), [left,right]))
+    return min(candidates, key=lambda pair: pair[0])[1] if candidates else _wrap(value,font,width)
 
 
 def section_bar_color(section):
@@ -135,7 +169,6 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
     text(w/2 if vertical else 70, 85, 'PRISM', 33, True, 'mt' if vertical else None)
     text(w/2 if vertical else 70, 140, 'My Scent Profile', 64, True, 'mt' if vertical else None)
     if vertical:
-        label('SIGNATURE COLLECTION', 70, 285, 860, True)
         left, region, bottle_y = 70, 860, 395
     else:
         label('SIGNATURE COLLECTION', 70, 250, 865)
@@ -143,15 +176,31 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
         d.line((985, 250, 985, 900), fill=ornament, width=1)
     n = len(signatures)
     box_w, box_h, gap = 250, 312, 28
-    if not vertical and n == 3 and 3*265+2*gap <= region:
+    if n == 3 and 3*265+2*gap <= region:
         box_w, box_h = 265, round(265*1.25)
-    name_lines = [limited(row['name'],30,box_w+4,2,True) for row in signatures]
+    name_lines = []
+    for row in signatures:
+        lines = balanced_name_lines(row['name'],font(30,True),box_w+4)
+        name_lines.append(lines if len(lines) <= 2 else limited(row['name'],30,box_w+4,2,True))
     name_height = max(((len(lines)-1)*37 + font(30,True).getbbox(lines[-1],anchor='mt')[3]
                        if lines else 0) for lines in name_lines)
     group_height = box_h+28+38+name_height
     if not vertical:
         # One shared top coordinate, based on the tallest name in this selection.
         bottle_y = round(290+(900-290-group_height)/2)
+    else:
+        note_value = ' · '.join(item['name'] for item in profile['notes']) or 'No note information available'
+        vertical_notes = limited(note_value,29,830,2)
+        vertical_note_height = ((len(vertical_notes)-1)*40+font(29).getbbox(vertical_notes[-1],anchor='mt')[3]) if vertical_notes else 0
+        accord_height = 74+(len(profile['sections'])-1)*120+63 if profile['sections'] else 40
+        title_bottom = d.textbbox((w/2,140),'My Scent Profile',font=font(64,True),anchor='mt')[3]
+        # Three equal external gaps; internal label/image/name spacing stays fixed.
+        section_gap = (h-90-title_bottom-(110+group_height)-accord_height-(70+vertical_note_height))/3
+        signature_y = round(title_bottom+section_gap)
+        label('SIGNATURE COLLECTION',70,signature_y,860,True)
+        bottle_y = signature_y+110
+        vertical_accord_y = round(bottle_y+group_height+section_gap)
+        vertical_notes_y = round(vertical_accord_y+accord_height+section_gap)
     group_bottom = bottle_y+group_height
     start = left+(region-(box_w*n+gap*(n-1)))/2
     for i, (row, data) in enumerate(zip(signatures, bottle_images)):
@@ -193,7 +242,7 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
         name_y=brand_y+38
         for j,line in enumerate(name_lines[i]):
             text(cx,name_y+j*37,line,30,True,'mt')
-    ix, iy, iw = (85, round(group_bottom+70), 830) if vertical else (1045, 250, 635)
+    ix, iy, iw = (85, vertical_accord_y, 830) if vertical else (1045, 250, 635)
     label('YOUR ACCORD BALANCE',ix,iy,iw,vertical)
     for i,item in enumerate(profile['sections']):
         y=iy+74+i*120
@@ -205,7 +254,7 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
     notes=' · '.join(item['name'] for item in profile['notes']) or 'No note information available'
     note_lines = limited(notes,29,iw,2)
     note_height = ((len(note_lines)-1)*40+font(29).getbbox(note_lines[-1],anchor='mt')[3]) if note_lines else 0
-    ny = round(h-90-70-note_height) if vertical else 740
+    ny = vertical_notes_y if vertical else 740
     label('NOTES YOU GRAVITATE TOWARD',ix,ny,iw,vertical)
     for i,line in enumerate(note_lines):
         text(ix+iw/2 if vertical else ix,ny+70+i*40,line,29,False,'mt' if vertical else None)

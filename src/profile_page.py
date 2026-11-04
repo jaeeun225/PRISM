@@ -243,7 +243,7 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
                                        brand=row['Brand'] if isinstance(row['Brand'], str) else '', image_url=row['Image URL'])
                                   for identifier, row in selected.iterrows()]
                     png = profile_png(profile, signatures, (dict(settings_key)['version'], map_logic,
-                                                            recommendation_logic, 'profile-v6-business'), orientation)
+                                                            recommendation_logic, 'profile-v7-centered-signatures'), orientation)
             except DataLoadError as exc:
                 st.error(str(exc))
                 return

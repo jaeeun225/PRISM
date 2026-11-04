@@ -4,7 +4,7 @@ import hashlib
 import zlib
 from http.client import HTTPException
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit, urlunsplit, urlencode
 from urllib.request import Request, urlopen
 
 import streamlit as st
@@ -74,15 +74,15 @@ def fetch_bottle(url):
 
 
 @st.cache_data(ttl=86400, max_entries=32, show_spinner=False)
-def _profile_png_cached(profile, signatures, version, bottle_images):
+def _profile_png_cached(profile, signatures, version, bottle_images, orientation):
     from .profile_card import render_card_png
-    return render_card_png(profile, signatures, bottle_images)
+    return render_card_png(profile, signatures, bottle_images, orientation=orientation)
 
 
-def profile_png(profile, signatures, version):
+def profile_png(profile, signatures, version, orientation='horizontal'):
     # Include image bytes in the PNG key so an earlier missing image cannot stick.
     return _profile_png_cached(profile, signatures, version,
-                               [fetch_bottle(row['image_url']) for row in signatures])
+                               [fetch_bottle(row['image_url']) for row in signatures], orientation)
 
 
 @st.cache_resource(max_entries=2, show_spinner=False)
@@ -166,7 +166,7 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
     .st-key-profile_preview [data-testid="stVerticalBlock"] {gap:0.5rem;}
     .st-key-profile_preview [data-testid="stImage"] {width:100%!important;}
     .st-key-profile_preview img {display:block;width:auto!important;height:auto!important;
-      max-width:100%!important;max-height:max(260px,min(640px,calc(100dvh - 390px)))!important;
+      max-width:100%!important;max-height:max(260px,min(640px,calc(100dvh - 450px)))!important;
       object-fit:contain;margin-inline:auto;}
     @media (max-width:900px) {
       .st-key-profile_layout [data-testid="stHorizontalBlock"]:has(.st-key-profile_controls) {
@@ -214,11 +214,20 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
                         st.button(labels[identifier] + ' ×', key=f'profile_remove_{identifier}',
                                   use_container_width=False, on_click=remove_signature, args=(identifier,))
                 st.button('↻ 처음부터 다시', key='profile_reset', on_click=reset_profile)
-            st.caption('최대 3개 · URL 북마크로 프로필 다시 열기')
+            st.caption('최대 3개')
+            if values:
+                address = urlsplit(st.context.url or '')
+                query_string = urlencode([(key, value) for key in st.query_params
+                                          for value in st.query_params.get_all(key)])
+                st.caption('프로필 저장 URL:')
+                st.code(urlunsplit((address.scheme, address.netloc, address.path, query_string, '')),
+                        language=None, wrap_lines=False)
         with preview, st.container(key='profile_preview'):
             if not values:
                 st.caption('시그니처 향수를 하나 이상 추가하면 프로필 카드가 표시됩니다.')
                 return
+            layout = st.radio('카드 형태', ['가로형', '세로형'], horizontal=True, key='profile_orientation')
+            orientation = 'horizontal' if layout == '가로형' else 'vertical'
             try:
                 with st.spinner('나만의 향 프로필을 만드는 중...'):
                     notes, angles = profile_context(settings_key, map_logic, map_artifact_loader, map_fallback_loader)
@@ -234,12 +243,12 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
                                        brand=row['Brand'] if isinstance(row['Brand'], str) else '', image_url=row['Image URL'])
                                   for identifier, row in selected.iterrows()]
                     png = profile_png(profile, signatures, (dict(settings_key)['version'], map_logic,
-                                                            recommendation_logic, 'profile-v5-images-picker'))
+                                                            recommendation_logic, 'profile-v6-business'), orientation)
             except DataLoadError as exc:
                 st.error(str(exc))
                 return
             st.image(BytesIO(png), use_container_width=True)
-            st.download_button('Download profile PNG', data=png, file_name='prism-scent-profile.png',
+            st.download_button('Download profile PNG', data=png, file_name=f'prism_profile_{orientation}.png',
                                mime='image/png', type='primary', on_click='ignore')
             if profile['color_source'] == 'dominant_section':
                 st.caption(f"향 계열이 서로 상쇄되는 조합이라 {profile['color_section']} 계열색을 대표색으로 사용했습니다.")

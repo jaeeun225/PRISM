@@ -71,84 +71,103 @@ def _mix(color, other, amount):
     return tuple(round(a * (1-amount) + b * amount) for a, b in zip(left, right))
 
 
-def render_card_png(profile, signatures, bottle_images, font_dirs=None):
-    """Render exactly the image displayed in-app and offered for download.
+def section_bar_color(section):
+    """Same anchor, saturation and lightness as app.py section labels/pills."""
+    import colorsys
+    from .scent_map import COLOR_HUE_ANCHOR
+    rgb = colorsys.hls_to_rgb(COLOR_HUE_ANCHOR[section] / 360, .40, .75)
+    return '#' + ''.join(f'{round(channel*255):02x}' for channel in rgb)
 
-    All wording is English; names/brands/notes remain original catalog text.
-    Bad/missing image bytes are treated as a missing bottle, never a failed card.
-    """
+
+def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientation='horizontal'):
     if not 1 <= len(signatures) <= 3 or len(signatures) != len(bottle_images):
         raise ValueError('A profile card requires 1–3 signatures and aligned images.')
-    width, margin = 1200, 64
-    fg, bg = profile['foreground'], profile['background']
+    if orientation not in ('horizontal', 'vertical'):
+        raise ValueError('Unknown card orientation')
+    vertical = orientation == 'vertical'
+    w, h = (1000, 1750) if vertical else (1750, 1000)
+    bg, fg = profile['background'], profile['foreground']
+    image = Image.new('RGB', (w, h), bg)
+    d = ImageDraw.Draw(image)
     font = lambda size, bold=False: serif_font(size, bold, font_dirs)
-    name_font, brand_font, body_font = font(28, True), font(25), font(28)
-    cell_width = min(340, (width - 2*margin - 24*(len(signatures)-1)) // len(signatures))
-    prepared = [(_wrap(row['name'], name_font, cell_width-8),
-                 _wrap(row['brand'], brand_font, cell_width-8)) for row in signatures]
-    signature_bottom = 400 + max(len(names)*32 + len(brands)*29 for names, brands in prepared)
-    accord_y = signature_bottom + 32
-    notes_y = accord_y + 42 + max(1, len(profile['sections']))*50 + 18
-    note_text = '  /  '.join(note['name'] for note in profile['notes']) or 'No note information available'
-    note_lines = _wrap(note_text, font(29), width-2*margin)
-    footer_y = notes_y + 43 + len(note_lines)*36 + 22
-    image = Image.new('RGB', (width, footer_y + 55), bg)
-    draw = ImageDraw.Draw(image)
-    draw.text((margin, 30), 'PRISM', fill=fg, font=font(34, True))
-    draw.line((margin, 78, width-margin, 78), fill=PERIWINKLE, width=5)
-    draw.text((margin, 100), 'My Scent Profile', fill=fg, font=font(52, True))
-    draw.text((margin, 180), 'SIGNATURE COLLECTION', fill=fg, font=font(24, True))
-    group_width = cell_width*len(signatures) + 24*(len(signatures)-1)
-    start_x = (width-group_width)//2
-    for i, (row, data, lines) in enumerate(zip(signatures, bottle_images, prepared)):
-        left = start_x + i*(cell_width+24)
-        center = left + cell_width/2
-        box = (int(center-94), 220, int(center+94), 380)
-        draw.rounded_rectangle(box, radius=18, fill='#FFFFFF', outline=PERIWINKLE, width=2)
-        bottle = None
+    ornament = _mix(bg, fg, .22)
+    d.rounded_rectangle((35, 35, w-35, h-35), radius=25, outline=ornament, width=2)
+    def text(x, y, value, size=28, bold=False, anchor=None):
+        d.text((x, y), value, font=font(size, bold), fill=fg, anchor=anchor)
+    def limited(value, size, width, count=2, bold=False):
+        lines = _wrap(value, font(size, bold), width)
+        if len(lines) > count:
+            lines = lines[:count]
+            tail = lines[-1]
+            while tail and font(size, bold).getlength(tail+'…') > width:
+                tail = tail[:-1]
+            lines[-1] = tail+'…'
+        return lines
+    def label(value, x, y, width, centered=False):
+        face = font(21, True)
+        spacing = 3
+        length = sum(face.getlength(c) for c in value) + spacing*(len(value)-1)
+        left = x+(width-length)/2 if centered else x
+        for c in value:
+            d.text((left, y), c, font=face, fill=fg)
+            left += face.getlength(c)+spacing
+        d.line((x, y+40, x+width, y+40), fill=ornament, width=1)
+    text(w/2 if vertical else 70, 85, 'PRISM', 33, True, 'mt' if vertical else None)
+    text(w/2 if vertical else 70, 140, 'My Scent Profile', 64, True, 'mt' if vertical else None)
+    if vertical:
+        label('SIGNATURE COLLECTION', 70, 285, 860, True)
+        left, region, bottle_y = 70, 860, 390
+    else:
+        label('SIGNATURE COLLECTION', 70, 250, 865)
+        left, region, bottle_y = 70, 865, 335
+        d.line((985, 250, 985, 825), fill=ornament, width=1)
+    n = len(signatures)
+    box_w, box_h, gap = 250, 270, 28
+    start = left+(region-(box_w*n+gap*(n-1)))/2
+    for i, (row, data) in enumerate(zip(signatures, bottle_images)):
+        x = round(start+i*(box_w+gap)); cx=x+box_w/2
+        box=(x,bottle_y,x+box_w,bottle_y+box_h)
+        d.rounded_rectangle((x+3,bottle_y+4,x+box_w+3,bottle_y+box_h+4),radius=16,fill=ornament)
+        d.rounded_rectangle(box,radius=16,fill='#FFFFFF',outline=ornament,width=1)
+        bottle=None
         if data:
             try:
-                with Image.open(BytesIO(data)) as opened:
-                    if opened.width*opened.height <= 16_000_000:
-                        bottle = ImageOps.contain(ImageOps.exif_transpose(opened).convert('RGBA'), (166, 140))
+                with Image.open(BytesIO(data)) as source:
+                    if source.width*source.height <= 16_000_000:
+                        bottle=ImageOps.contain(ImageOps.exif_transpose(source).convert('RGBA'),(230,240))
             except (OSError, ValueError, Image.DecompressionBombError):
                 pass
         if bottle is not None:
-            image.paste(bottle, (round(center-bottle.width/2), 230+(140-bottle.height)//2), bottle)
+            image.paste(bottle,(round(cx-bottle.width/2),round(bottle_y+(box_h-bottle.height)/2)),bottle)
         else:
-            # Quiet bottle silhouette, shared by the on-screen card and PNG.
-            ghost = _mix('#FFFFFF', PERIWINKLE, .20)
-            draw.rounded_rectangle((center-32, 274, center+32, 346), radius=9, fill=ghost)
-            draw.rectangle((center-13, 258, center+13, 275), fill=ghost)
-            draw.rounded_rectangle((center-18, 247, center+18, 259), radius=3,
-                                   fill=_mix('#FFFFFF', PERIWINKLE, .32))
-        y = 400
-        for text in lines[0]:
-            draw.text((center, y), text, anchor='mt', fill=fg, font=name_font)
-            y += 32
-        for text in lines[1]:
-            draw.text((center, y+2), text, anchor='mt', fill=fg, font=brand_font)
-            y += 29
-    draw.text((margin, accord_y), 'YOUR ACCORD BALANCE', fill=fg, font=font(26, True))
-    track = _mix(bg, fg, .16)
-    for i, section in enumerate(profile['sections']):
-        y = accord_y + 42 + i*50
-        draw.text((margin, y), section['section'], fill=fg, font=body_font)
-        draw.text((width-margin, y), f"{section['percent']:.1f}%", anchor='rt', fill=fg, font=font(28, True))
-        bar_y = y + 33
-        draw.rounded_rectangle((margin, bar_y, width-margin, bar_y+6), radius=4, fill=track)
-        end = margin + round((width-2*margin)*section['percent']/100)
-        if end > margin:
-            draw.rounded_rectangle((margin, bar_y, end, bar_y+6), radius=4, fill=PERIWINKLE)
-    if not profile['sections']:
-        draw.text((margin, accord_y+42), 'No wheel-mapped accord information', fill=fg, font=body_font)
-    draw.text((margin, notes_y), 'NOTES YOU GRAVITATE TOWARD', fill=fg, font=font(26, True))
-    for i, line in enumerate(note_lines):
-        draw.text((margin, notes_y+43+i*36), line, fill=fg, font=font(29))
-    draw.line((margin, footer_y-14, width-margin, footer_y-14), fill=track, width=2)
-    draw.text((margin, footer_y), 'A portrait of your fragrance taste', fill=fg, font=font(23))
-    draw.text((width-margin, footer_y), f"{len(signatures)} SIGNATURE" + ('S' if len(signatures)>1 else ''),
-              anchor='rt', fill=fg, font=font(23, True))
-    buffer = BytesIO()
-    image.save(buffer, format='PNG', optimize=True)
+            ghost=_mix('#FFFFFF',PERIWINKLE,.20)
+            cy=bottle_y+box_h/2
+            d.rounded_rectangle((cx-42,cy-25,cx+42,cy+65),radius=12,fill=ghost)
+            d.rectangle((cx-17,cy-48,cx+17,cy-24),fill=ghost)
+            d.rounded_rectangle((cx-23,cy-60,cx+23,cy-46),radius=4,fill=ghost)
+        name_y=bottle_y+box_h+24
+        for j,line in enumerate(limited(row['name'],30,box_w+4,2,True)):
+            text(cx,name_y+j*37,line,30,True,'mt')
+        brand=limited(row['brand'],25,box_w,1)[0] if row['brand'] else ''
+        text(cx,name_y+82,brand,25,False,'mt')
+    ix, iy, iw = (85, 930, 830) if vertical else (1045, 250, 635)
+    label('YOUR ACCORD BALANCE',ix,iy,iw,vertical)
+    for i,item in enumerate(profile['sections']):
+        y=iy+74+i*100
+        text(ix,y,item['section'],30)
+        text(ix+iw,y,f"{item['percent']:.1f}%",30,True,'rt')
+        d.rounded_rectangle((ix,y+49,ix+iw,y+61),radius=6,fill='#E5E5E5',outline=ornament,width=1)
+        end=ix+max(12,round(iw*item['percent']/100))
+        d.rounded_rectangle((ix,y+49,end,y+61),radius=6,fill=section_bar_color(item['section']))
+    ny = 1350 if vertical else 665
+    label('NOTES YOU GRAVITATE TOWARD',ix,ny,iw,vertical)
+    notes=' · '.join(item['name'] for item in profile['notes']) or 'No note information available'
+    for i,line in enumerate(limited(notes,29,iw,2)):
+        text(ix+iw/2 if vertical else ix,ny+70+i*40,line,29,False,'mt' if vertical else None)
+    footer=h-130
+    d.line((70,footer-24,w-70,footer-24),fill=ornament,width=1)
+    # Same serif family, a restrained smaller caption instead of an extra font.
+    text(70,footer,'A portrait of your fragrance taste',23)
+    text(w-70,footer,f'{n} SIGNATURE'+('S' if n>1 else ''),23,True,'rt')
+    buffer=BytesIO();image.save(buffer,format='PNG',optimize=True)
     return buffer.getvalue()

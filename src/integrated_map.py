@@ -5,11 +5,13 @@ from html import escape
 from .catalog_search import find_perfumes
 from .profile_labels import build_label_index, sorted_choices
 from .integrated_ui import (
-    add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles,
-    recommendation_clicks, search_matches_figure, section_colors, spread_section_labels, subset_figure,
+    add_rank_ring, add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles,
+    recommendation_clicks, search_matches_figure, section_colors, show_rank_ring,
+    spread_section_labels, subset_figure,
 )
 
-STAGE = 'ui-fix3-v1'
+STAGE = 'ui-fix4-v1'
+RECOMMENDATION_DOUBLE_CLICK_DELAY = 175
 SEARCH_MARKER_LIMIT = 30
 NATIVE_POINTS = True
 
@@ -105,6 +107,7 @@ def figure_for(settings, identifier, filters, stage, _api):
         for trace in fig.data:
             if trace.mode == 'text':
                 font = trace.textfont
+                add_rank_ring(fig, int(trace.text[0]), float(trace.x[0]), float(trace.y[0]))
                 fig.add_annotation(
                     x=float(trace.x[0]), y=float(trace.y[0]),
                     text=f"<b>{trace.text[0]}</b>", name="prism-rank-"+str(trace.text[0]),
@@ -289,23 +292,28 @@ def _render_integrated(api):
     permitted={identifier,*(r['id'] for r in results)} if identifier else None
     left,right = st.columns([3,2],gap='medium')
     with left:
-        reset_hint = '도구 모음의 초기화: 전체 보기' if identifier else '더블클릭: 전체 보기'
+        reset_hint = ('더블클릭: 추천 범위 초기화' if RECOMMENDATION_DOUBLE_CLICK_DELAY
+                      else '도구 모음의 초기화: 추천 범위 보기') if identifier else '더블클릭: 전체 보기'
         st.caption('마우스 휠: 확대·축소 · 드래그: 영역 확대 · 점 클릭: 상세 정보 · ' + reset_hint)
         if visible_count==0:st.caption('조건에 맞는 향수가 없습니다')
         chart_config = dict(scrollZoom=True, displaylogo=False, doubleClick='autosize',
                             modeBarButtonsToRemove=['toImage','select2d','lasso2d','autoScale2d'])
         if identifier:
             # A constant chart spec keeps the browser zoom and pan across detail updates.
-            chart_config.update(doubleClick=False, doubleClickDelay=0)
+            chart_config.update(
+                doubleClick='reset' if RECOMMENDATION_DOUBLE_CLICK_DELAY else False,
+                doubleClickDelay=RECOMMENDATION_DOUBLE_CLICK_DELAY,
+            )
             with st.container(key='ui_recommendation_chart', gap=None):
                 st.plotly_chart(fig, key='integration_recommendation_map', width='stretch',
                                 theme=None, config=chart_config)
                 point_key = 'ui_recommendation_events'
                 recommendation_clicks(
                     key=point_key, selected=detail,
-                    rank=next((r['rank'] for r in results if r['id'] == detail), None),
                     on_point=lambda: capture_map(point_key, permitted, point_trigger=True),
                 )
+                selected_rank = next((r['rank'] for r in results if r['id'] == detail), None)
+                show_rank_ring(fig, selected_rank)
         else:
             map_key = 'integration_map_' + str(st.session_state.get('integration_epoch', 0))
             st.plotly_chart(fig, key=map_key, width='stretch', theme=None,

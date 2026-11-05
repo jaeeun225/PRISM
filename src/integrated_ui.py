@@ -402,12 +402,15 @@ def scoped_styles():
     .st-key-prism_unified [data-testid="stMarkdownContainer"]:has(> .ui-rec-title){margin-bottom:0}
     .st-key-prism_unified .ui-rec-title{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin-bottom:7px}
     .st-key-prism_unified .ui-rec-title h3{font-size:20px!important;font-weight:600!important;color:#302e38;line-height:1.2;margin:0;padding:0}
+    .st-key-prism_unified{--prism-control-radius:8px;--prism-control-stroke:1px;--prism-control-border:rgba(49,51,63,.2);--prism-control-font:14px}
     .st-key-ui_recommendation_chart .updatemenu-button{translate:12px -43px}
+    .st-key-ui_recommendation_chart .updatemenu-item-rect{rx:var(--prism-control-radius);ry:var(--prism-control-radius);height:32px;stroke:var(--prism-control-border)!important;stroke-width:var(--prism-control-stroke)!important}
+    .st-key-ui_recommendation_chart .updatemenu-button text{font-size:var(--prism-control-font)!important}
     .st-key-ui_recommendation_chart .updatemenu-button + .updatemenu-button{translate:18px -43px}
     .st-key-ui_recommendation_chart .modebar{top:12.4px!important;right:25px!important}
     .st-key-ui_recommendation_chart .modebar-btn svg{width:18px;height:18px}
     .st-key-ui_recommendation_chart [data-prism-view="recommended"] .updatemenu-button:not(.updatemenu-button + .updatemenu-button) .updatemenu-item-rect,
-    .st-key-ui_recommendation_chart [data-prism-view="full"] .updatemenu-button + .updatemenu-button .updatemenu-item-rect{fill:#eeedf9!important;stroke:#8d95ce!important}
+    .st-key-ui_recommendation_chart [data-prism-view="full"] .updatemenu-button + .updatemenu-button .updatemenu-item-rect{fill:#eeedf9!important}
     .st-key-prism_unified .ui-rec-title p{line-height:1.35;margin:0 0 0 auto;color:#6c6975;font-size:14px;font-weight:400;overflow-wrap:anywhere}
     .st-key-prism_unified [data-testid="stLayoutWrapper"]:has(> .st-key-ui_recommendation_events),
     .st-key-prism_unified .st-key-ui_recommendation_events{display:none}
@@ -440,8 +443,12 @@ def scoped_styles():
     .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:56px}
     .st-key-ui_recommendation_chart{position:relative}
     .st-key-ui_recommendation_chart > [data-testid="stElementContainer"]:has(.ui-map-info){position:static}
-    .st-key-ui_recommendation_chart .ui-map-info{position:absolute;left:211px;top:14.5px;z-index:2;color:#626781;font-size:18px;line-height:24px;cursor:help}
-    .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus-visible)::after{content:attr(data-hint);position:absolute;left:0;top:100%;width:max-content;max-width:min(600px,calc(100vw - 240px));word-break:keep-all;border:1px solid #dedce8;border-radius:6px;padding:7px 9px;background:white;color:#4d4b59;font-size:13px;line-height:1.35;box-shadow:0 2px 8px #38384b15;pointer-events:none}
+    .st-key-ui_recommendation_chart .ui-map-info{position:absolute;left:211px;top:14.5px;z-index:20;color:#6b6573;font-size:18px;line-height:24px;cursor:default}
+    .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus){color:#6e7bc9}
+    .st-key-ui_recommendation_chart .ui-map-tooltip{display:none;position:absolute;left:-14px;top:calc(100% + 7px);width:max-content;max-width:300px;grid-template-columns:auto auto;gap:5px 16px;word-break:keep-all;border-radius:10px;padding:12px 14px;background:#302e38;color:#fff;font-size:14px;line-height:1.4;box-shadow:0 6px 18px rgba(0,0,0,.18);pointer-events:none}
+    .st-key-ui_recommendation_chart .ui-map-tooltip::before{content:'';position:absolute;left:19px;top:-7px;border-inline:4px solid transparent;border-bottom:8px solid #302e38}
+    .st-key-ui_recommendation_chart .ui-map-tooltip b{font-weight:600}
+    .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus) .ui-map-tooltip{display:grid}
     @media(max-width:700px){.st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:16px}}
     .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"]{margin-bottom:5px;min-height:0}
     .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"] p{font-size:16px;font-weight:600;color:#302e38;line-height:1.25}
@@ -451,6 +458,8 @@ def scoped_styles():
     .st-key-prism_unified .st-key-ui_filter_shell{border:1px solid #e2e1e8;border-radius:12px;background:white;gap:0}
     .st-key-prism_unified .st-key-ui_filter_actions{gap:8px;align-items:center}
     .st-key-prism_unified .st-key-ui_filter_hint{margin-left:auto}
+    .st-key-prism_unified .ui-filter-pending{display:inline-flex;align-items:center;gap:8px;color:#465394;font-size:14px;font-weight:600}
+    .st-key-prism_unified .ui-filter-pending::before{content:'';width:8px;height:8px;flex:none;border-radius:50%;background:#6e7bc9}
     .st-key-prism_unified .st-key-ui_filter_toggle button{border:0;border-radius:11px;background:white;color:#302e38;font-weight:600;min-height:44px;padding:8px 14px}
     .st-key-prism_unified .st-key-ui_filter_toggle button:hover{background:#f5f4fa;color:inherit}
     .st-key-prism_unified .st-key-ui_filter_toggle button:focus-visible{outline:2px solid #6e7bc9;outline-offset:-2px}
@@ -466,7 +475,10 @@ def scoped_styles():
     .st-key-prism_unified .st-key-ui_filter_shell:has(.st-key-ui_filter_body) .st-key-ui_filter_toggle button{border-radius:11px 11px 0 0}
     .st-key-prism_unified .st-key-ui_filter_body{border-top:1px solid #ebeaf0;padding:14px}
     .st-key-prism_unified .st-key-ui_filter_body [data-testid="stVerticalBlock"]:has(> [data-testid="stLayoutWrapper"] > .st-key-ui_filter_actions){gap:12px}
-    .st-key-prism_unified .st-key-ui_filter_actions button{min-height:34px;padding:4px 12px;font-size:14px}
+    .st-key-prism_unified .st-key-ui_filter_actions button{min-height:34px;padding:4px 12px;font-size:var(--prism-control-font)}
+    .st-key-prism_unified .st-key-ui_filter_actions button[kind="secondary"]{border-radius:var(--prism-control-radius);border:var(--prism-control-stroke) solid var(--prism-control-border)}
+    .st-key-prism_unified .st-key-ui_filter_actions button[kind="secondary"]:hover{border-color:var(--primary-color,#6E7BC9)}
+    .st-key-prism_unified .st-key-ui_filter_apply button[kind="secondary"]{background:#fff;color:#797582;border-color:#e2e1e8!important}
     .st-key-prism_unified .st-key-ui_filter_grid [data-testid="stHorizontalBlock"]{align-items:stretch}
     .st-key-prism_unified .st-key-ui_filter_grid [data-testid="stColumn"]>div{height:100%}
     .st-key-prism_unified .st-key-ui_filter_grid [data-testid="stColumn"] [data-testid="stLayoutWrapper"]:has(>[class*="st-key-ui_section_"]){flex:1;min-height:0}

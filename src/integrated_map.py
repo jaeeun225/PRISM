@@ -206,14 +206,18 @@ def filter_editor(api,groups):
     from .accord_descriptions import ACCORD_DESCRIPTIONS
     active=set(st.session_state.integration_active)
     draft={a for i,_ in enumerate(groups) for a in st.session_state.get(f'integration_draft_{i}',[])}
+    has_changes = draft != active
     with st.container(horizontal=True,vertical_alignment='center',key='ui_filter_actions'):
         st.button('전체 선택',key='ui_filter_all',on_click=set_all_groups,args=(groups,True))
         st.button('전체 해제',key='ui_filter_clear',on_click=set_all_groups,args=(groups,False))
-        if st.button('적용',type='primary',key='ui_filter_apply'):
+        if st.button('적용',type='primary' if has_changes else 'secondary',key='ui_filter_apply'):
             apply_groups(groups)
             st.rerun(scope='app')
         with st.container(key='ui_filter_hint',width='content'):
-            st.caption('변경 사항이 있습니다 — 적용을 눌러주세요' if draft!=active else 'OR 조건 · 미선택 시 전체 표시')
+            if has_changes:
+                st.html('<span class="ui-filter-pending" role="status">변경 사항이 있습니다 — 적용을 눌러주세요</span>')
+            else:
+                st.caption('OR 조건 · 미선택 시 전체 표시')
     css=[]
     for i,(section,_) in enumerate(groups):
         ink,pale=section_colors(section,api)
@@ -330,16 +334,22 @@ def _render_integrated(api):
                     on_point=lambda: capture_map(point_key, permitted, point_trigger=True),
                 )
                 show_rank_ring(fig, selected_rank)
-                safe_hint = escape(hint, quote=True)
-                st.html(f'<span class="ui-map-info" tabindex="0" aria-label="{safe_hint}" '
-                        f'data-hint="{safe_hint}">ⓘ</span>')
+                st.html(
+                    '<span class="ui-map-info" tabindex="0" aria-label="지도 조작 안내" '
+                    'aria-describedby="prism-map-help">ⓘ'
+                    '<span class="ui-map-tooltip" id="prism-map-help" role="tooltip">'
+                    '<b>마우스 휠</b><span>확대·축소</span>'
+                    '<b>드래그</b><span>영역 확대</span>'
+                    '<b>점 클릭</b><span>상세 정보</span>'
+                    '<b>더블클릭·홈</b><span>추천 범위</span>'
+                    '</span></span>'
+                )
         else:
             map_key = 'integration_map_' + str(st.session_state.get('integration_epoch', 0))
             st.plotly_chart(fig, key=map_key, width='stretch', theme=None,
                             on_select=lambda: capture_map(map_key, permitted),
                             selection_mode='points', config=chart_config)
             st.caption(hint)
-        if identifier: st.caption('기준 향수는 작은 이중 테두리, 추천 향수는 순위 번호로 표시됩니다.')
         if filters: st.caption('필터는 배경 분포에 적용됩니다. 기준 향수와 추천 Top 10은 비교를 위해 유지합니다.')
     with right:
         if results:

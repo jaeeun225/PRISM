@@ -392,8 +392,9 @@ def render_navigation() -> None:
         "B2": "logo_scentmap_b2.svg",
         "B2L": "logo_scentmap_b2l.svg",
         "B3": "logo_scentmap_b3.svg",
+        "R2": "logo_mark_ring_r2.svg",
     }
-    mark_file = marks.get(st.query_params.get("logo"), marks["B2L"])
+    mark_file = marks.get(st.query_params.get("logo"), "logo_mark_ring.svg")
     mark = Path(__file__).resolve().parent / "assets" / mark_file
     mark_uri = "data:image/svg+xml;base64," + b64encode(mark.read_bytes()).decode("ascii")
     nav_button = ".st-key-prism_nav button"

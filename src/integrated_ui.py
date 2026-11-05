@@ -372,10 +372,10 @@ def spread_section_labels(figure):
 
 def scoped_styles():
     st.html('''<style>
-    .st-key-prism_unified .st-key-ui_rows,.st-key-prism_unified .st-key-ui_rows [data-testid="stVerticalBlock"]{gap:6px}
+    .st-key-prism_unified .st-key-ui_rows,.st-key-prism_unified .st-key-ui_rows [data-testid="stVerticalBlock"]{gap:10px}
     .st-key-prism_unified .st-key-ui_rows{padding:4px 2px}
     .st-key-prism_unified [data-testid="stMarkdownContainer"]:has(> .ui-rec-title){margin-bottom:0}
-    .st-key-prism_unified .ui-rec-title{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin-bottom:10px}
+    .st-key-prism_unified .ui-rec-title{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin-bottom:7px}
     .st-key-prism_unified .ui-rec-title h3{font-size:23px!important;font-weight:600!important;line-height:1.2;margin:0;padding:0}
     .st-key-ui_recommendation_chart .updatemenu-button + .updatemenu-button{translate:8px 0}
     .st-key-ui_recommendation_chart [data-prism-view="recommended"] .updatemenu-button:not(.updatemenu-button + .updatemenu-button) .updatemenu-item-rect,
@@ -383,7 +383,7 @@ def scoped_styles():
     .st-key-prism_unified .ui-rec-title p{line-height:1.35;margin:0 0 0 auto;color:#6c6975;font-size:14px;overflow-wrap:anywhere}
     .st-key-prism_unified [data-testid="stLayoutWrapper"]:has(> .st-key-ui_recommendation_events),
     .st-key-prism_unified .st-key-ui_recommendation_events{display:none}
-    .st-key-prism_unified .st-key-ui_rows button{position:relative;height:50px;min-height:50px;justify-content:flex-start;text-align:left;border:1px solid #e8e7ed;border-radius:9px;background:white;padding:4px 64px 4px 10px}
+    .st-key-prism_unified .st-key-ui_rows button{position:relative;height:46px;min-height:46px;justify-content:flex-start;text-align:left;border:1px solid #e8e7ed;border-radius:9px;background:white;padding:3px 64px 3px 10px}
     .st-key-prism_unified .st-key-ui_rows button[kind="primary"]{background:#eeedf9;border-color:#a9add8}
     .st-key-prism_unified .st-key-ui_rows button>div,.st-key-prism_unified .st-key-ui_rows button [data-has-shortcut]{width:100%;min-width:0;justify-content:flex-start}
     .st-key-prism_unified .st-key-ui_rows button [data-testid="stMarkdownContainer"]{width:100%;min-width:0}
@@ -395,7 +395,7 @@ def scoped_styles():
     .st-key-prism_unified .st-key-ui_detail{position:relative}
     .st-key-prism_unified .st-key-ui_close{position:absolute;right:10px;top:6px;z-index:3;width:28px}
     .st-key-prism_unified .st-key-ui_close button{font-size:18px;color:#6c6975;min-height:25px;padding:0 6px;background:transparent;border:0}
-    .st-key-prism_unified .prism-detail-card{border:1px solid;border-radius:16px;box-shadow:0 3px 12px #38384b09;padding:14px 16px;box-sizing:border-box}
+    .st-key-prism_unified .prism-detail-card{border:1px solid;border-radius:16px;box-shadow:0 3px 12px #38384b09;padding:10px 16px;box-sizing:border-box}
     .st-key-prism_unified .prism-detail-top{display:flex;align-items:flex-start;gap:12px}
     .st-key-prism_unified .prism-detail-image{flex:0 0 auto;background:white;border:1px solid;border-radius:10px;padding:4px}
     .st-key-prism_unified .prism-detail-image img{display:block;width:120px;height:126px;object-fit:contain}
@@ -406,13 +406,17 @@ def scoped_styles():
     .st-key-prism_unified .prism-detail-badges span{background:#e9e7f8;color:#4e5896;border-radius:14px;padding:2px 7px;font-size:12px;display:inline-block;margin:1px 2px 0 0}
     .st-key-prism_unified .prism-detail-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
     .st-key-prism_unified .prism-detail-chips span{border:1px solid;border-radius:16px;padding:1px 6px;color:#2c2c2a;font-size:12px}
-    .st-key-prism_unified .prism-detail-notes{display:grid;grid-template-columns:52px 1fr;gap:4px 8px;font-size:13px;line-height:1.35;margin-top:9px}
+    .st-key-prism_unified .prism-detail-notes{display:grid;grid-template-columns:52px 1fr;gap:4px 8px;font-size:13px;line-height:1.35;margin-top:8px}
     .st-key-prism_unified .prism-detail-notes b{color:#505b9c;white-space:nowrap}
-    .st-key-prism_unified{gap:10px}
+    .st-key-prism_unified{gap:16px}
+    .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:56px}
+    .st-key-ui_recommendation_chart{position:relative}
+    .st-key-ui_recommendation_chart > [data-testid="stElementContainer"]:has(.ui-map-info){position:static}
+    .st-key-ui_recommendation_chart .ui-map-info{position:absolute;left:214px;top:13px;z-index:2;color:#626781;font-size:17px;line-height:24px;cursor:help}
+    .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus-visible)::after{content:attr(data-hint);position:absolute;left:0;top:100%;width:max-content;max-width:min(350px,45vw);border:1px solid #dedce8;border-radius:6px;padding:7px 9px;background:white;color:#4d4b59;font-size:13px;line-height:1.35;box-shadow:0 2px 8px #38384b15;pointer-events:none}
+    @media(max-width:700px){.st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:16px}}
     .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"]{margin-bottom:5px;min-height:0}
     .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"] p{font-size:14px;line-height:1.25}
-    .st-key-prism_unified .st-key-ui_map_hint p{font-size:13px;line-height:1.3;color:#6c6975}
-    .st-key-prism_unified .st-key-ui_map_hint + [data-testid="stLayoutWrapper"]{margin-top:-4px}
     .st-key-prism_unified :is(.ui-rec-title h3,.st-key-ui_rows button strong,.prism-detail-badges span,.st-key-ui_filter_toggle code){font-variant-numeric:lining-nums tabular-nums}
     .st-key-prism_unified :is(.ui-rec-title h3 span,.st-key-ui_rows button code,.st-key-ui_rows button strong:last-of-type,.prism-detail-badges span,.st-key-ui_filter_toggle code){font-family:'Times New Roman',Georgia,serif!important;font-variant-numeric:lining-nums tabular-nums}
     .st-key-prism_unified .st-key-ui_rows button code{font-size:inherit;font-weight:inherit;color:inherit;background:transparent;padding:0}

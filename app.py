@@ -390,6 +390,7 @@ def render_navigation() -> None:
         "B": "logo_scentmap.svg",
         "B1": "logo_scentmap_b1.svg",
         "B2": "logo_scentmap_b2.svg",
+        "B2L": "logo_scentmap_b2l.svg",
         "B3": "logo_scentmap_b3.svg",
     }
     mark_file = marks.get(st.query_params.get("logo"), marks["B2"])

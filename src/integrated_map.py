@@ -272,7 +272,7 @@ def render_integrated(api):
 
 def _render_integrated(api):
     detail=st.session_state.get("integration_detail")
-    search_column,selection_column=st.columns(2)
+    search_column,selection_column=st.columns([3,2],gap="medium")
     with search_column:
         query = st.text_input('향수 이름 또는 브랜드 검색',key='integration_search',on_change=reset_search)
     try:
@@ -313,8 +313,7 @@ def _render_integrated(api):
     left,right = st.columns([3,2],gap='medium')
     with left:
         reset_hint = '더블클릭·홈: 추천 범위' if identifier else '더블클릭: 전체 보기'
-        with st.container(key='ui_map_hint', gap=None):
-            st.caption('마우스 휠: 확대·축소 · 드래그: 영역 확대 · 점 클릭: 상세 정보 · ' + reset_hint)
+        hint = '마우스 휠: 확대·축소 · 드래그: 영역 확대 · 점 클릭: 상세 정보 · ' + reset_hint
         if visible_count==0:st.caption('조건에 맞는 향수가 없습니다')
         chart_config = dict(scrollZoom=True, displaylogo=False, doubleClick='autosize',
                             modeBarButtonsToRemove=['toImage','select2d','lasso2d','autoScale2d'])
@@ -331,11 +330,15 @@ def _render_integrated(api):
                 )
                 selected_rank = next((r['rank'] for r in results if r['id'] == detail), None)
                 show_rank_ring(fig, selected_rank)
+                safe_hint = escape(hint, quote=True)
+                st.html(f'<span class="ui-map-info" tabindex="0" aria-label="{safe_hint}" '
+                        f'data-hint="{safe_hint}">ⓘ</span>')
         else:
             map_key = 'integration_map_' + str(st.session_state.get('integration_epoch', 0))
             st.plotly_chart(fig, key=map_key, width='stretch', theme=None,
                             on_select=lambda: capture_map(map_key, permitted),
                             selection_mode='points', config=chart_config)
+            st.caption(hint)
         if identifier: st.caption('기준 향수는 작은 이중 테두리, 추천 향수는 순위 번호로 표시됩니다.')
         if filters: st.caption('필터는 배경 분포에 적용됩니다. 기준 향수와 추천 Top 10은 비교를 위해 유지합니다.')
     with right:

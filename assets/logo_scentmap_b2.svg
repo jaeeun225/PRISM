@@ -13,16 +13,16 @@
   <circle cx="54.121" cy="92.422" r="8.500" fill="#a46e4c"/>
   <circle cx="76.874" cy="63.890" r="8.500" fill="#a4514c"/>
   <circle cx="109.753" cy="48.056" r="8.500" fill="#a44c74"/>
-  <circle cx="132.870" cy="87.602" r="6.720" fill="#a45b80"/>
-  <circle cx="173.008" cy="128.929" r="6.720" fill="#a4675b"/>
-  <circle cx="146.316" cy="164.929" r="6.720" fill="#5ba480"/>
-  <circle cx="105.731" cy="170.441" r="6.720" fill="#665ba4"/>
-  <circle cx="87.305" cy="136.077" r="6.720" fill="#5b97a4"/>
-  <circle cx="94.821" cy="96.996" r="6.720" fill="#a46e5b"/>
-  <circle cx="116.243" cy="142.839" r="6.720" fill="#a2a45b"/>
-  <circle cx="171.213" cy="93.362" r="6.720" fill="#a45b68"/>
-  <circle cx="173.117" cy="156.554" r="6.720" fill="#8ba45b"/>
-  <circle cx="127.950" cy="185.652" r="6.720" fill="#625ba4"/>
+  <circle cx="132.870" cy="87.602" r="7.680" fill="#a45b80"/>
+  <circle cx="174.951" cy="129.612" r="7.680" fill="#a4675b"/>
+  <circle cx="146.316" cy="164.929" r="7.680" fill="#5ba480"/>
+  <circle cx="105.731" cy="170.441" r="7.680" fill="#665ba4"/>
+  <circle cx="87.305" cy="136.077" r="7.680" fill="#5b97a4"/>
+  <circle cx="94.821" cy="96.996" r="7.680" fill="#a46e5b"/>
+  <circle cx="116.243" cy="142.839" r="7.680" fill="#a2a45b"/>
+  <circle cx="171.213" cy="93.362" r="7.680" fill="#a45b68"/>
+  <circle cx="173.117" cy="156.554" r="7.680" fill="#8ba45b"/>
+  <circle cx="127.950" cy="185.652" r="7.680" fill="#625ba4"/>
   <circle cx="145.305" cy="119.193" r="13.3" fill="none" stroke="#282027" stroke-width="2.45"/>
   <circle cx="145.305" cy="119.193" r="6.400" fill="#a44c67"/>
 </svg>

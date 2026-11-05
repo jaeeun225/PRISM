@@ -141,7 +141,7 @@ def figure_for(settings, identifier, filters, stage, _api):
             x=0.015, y=1.08, xanchor='left', yanchor='top',
             pad=dict(t=0, r=0, b=0, l=0), bgcolor='#ffffff',
             bordercolor='#dedce8', borderwidth=1,
-            font=dict(family='Georgia', size=11, color='#38364a'),
+            font=dict(family='Georgia', size=14, color='#38364a'),
             buttons=[
                 view_button('추천 범위', fig.layout.xaxis.range, fig.layout.yaxis.range),
                 view_button('전체 지도', full_range, full_range),
@@ -312,8 +312,9 @@ def _render_integrated(api):
     permitted={identifier,*(r['id'] for r in results)} if identifier else None
     left,right = st.columns([3,2],gap='medium')
     with left:
-        reset_hint = '더블클릭·홈: 추천 범위 · 전체 지도 버튼: 전체 보기' if identifier else '더블클릭: 전체 보기'
-        st.caption('마우스 휠: 확대·축소 · 드래그: 영역 확대 · 점 클릭: 상세 정보 · ' + reset_hint)
+        reset_hint = '더블클릭·홈: 추천 범위' if identifier else '더블클릭: 전체 보기'
+        with st.container(key='ui_map_hint', gap=None):
+            st.caption('마우스 휠: 확대·축소 · 드래그: 영역 확대 · 점 클릭: 상세 정보 · ' + reset_hint)
         if visible_count==0:st.caption('조건에 맞는 향수가 없습니다')
         chart_config = dict(scrollZoom=True, displaylogo=False, doubleClick='autosize',
                             modeBarButtonsToRemove=['toImage','select2d','lasso2d','autoScale2d'])
@@ -341,7 +342,7 @@ def _render_integrated(api):
         if results:
             with st.container(key='ui_recommendation_heading', gap=None):
                 name = escape(str(catalog.set_index('_id').loc[identifier, 'Name']))
-                st.markdown(f'<div class="ui-rec-title"><h3>추천 Top 10</h3>'
+                st.markdown(f'<div class="ui-rec-title"><h3>추천 Top <span>10</span></h3>'
                             f'<p>기준: {name}</p></div>', unsafe_allow_html=True)
                 recommendation_rows(results,catalog,detail,api,select_detail)
         elif not detail:

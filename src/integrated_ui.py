@@ -92,7 +92,7 @@ def recommendation_rows(results,catalog,selected,api,select):
     with st.container(height=280,border=False,key='ui_rows'):
         for result in results:
             row=lookup.loc[result['id']]
-            label=f"![bottle]({image_source(row,api)}) **{result['rank']}. {markdown_text(result['name'])}**  \n{markdown_text(result['brand'])} **{result['final_score']:.4f}**"
+            label=f"![bottle]({image_source(row,api)}) **`{result['rank']}.` {markdown_text(result['name'])}**  \n{markdown_text(result['brand'])} **{result['final_score']:.4f}**"
             st.button(label,key='ui_rec_'+result['id'],width='stretch',
                       type='primary' if selected==result['id'] else 'secondary',
                       on_click=select,args=(result['id'],))
@@ -224,8 +224,10 @@ export default function({data, parentElement, setTriggerValue}) {
     function trackRange(changes) {
         const endpoints = ['xaxis.range[0]', 'xaxis.range[1]', 'yaxis.range[0]', 'yaxis.range[1]'];
         if (!Object.keys(changes).some(key => /^[xy]axis\.(range|autorange)/.test(key))) return;
-        const initial = graph.layout.updatemenus[0].buttons[0].args[0];
-        graph[atRecommendation] = endpoints.every(key => changes[key] === initial[key]);
+        const [recommended, full] = graph.layout.updatemenus[0].buttons;
+        const matches = button => endpoints.every(key => changes[key] === button.args[0][key]);
+        graph[atRecommendation] = matches(recommended);
+        graph.dataset.prismView = graph[atRecommendation] ? 'recommended' : matches(full) ? 'full' : 'custom';
     }
 
     function resetRecommendation() {
@@ -309,6 +311,7 @@ export default function({data, parentElement, setTriggerValue}) {
         detach();
         graph = next;
         graph[atRecommendation] ??= true;
+        graph.dataset.prismView ??= 'recommended';
         graph.on('plotly_relayout', trackRange);
         graph.addEventListener('pointerdown', start, true);
         graph.addEventListener('click', resetFromToolbar, true);
@@ -373,7 +376,10 @@ def scoped_styles():
     .st-key-prism_unified .st-key-ui_rows{padding:4px 2px}
     .st-key-prism_unified [data-testid="stMarkdownContainer"]:has(> .ui-rec-title){margin-bottom:0}
     .st-key-prism_unified .ui-rec-title{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin-bottom:10px}
-    .st-key-prism_unified .ui-rec-title h3{font-size:24px;line-height:1.2;margin:0;padding:0}
+    .st-key-prism_unified .ui-rec-title h3{font-size:23px!important;font-weight:600!important;line-height:1.2;margin:0;padding:0}
+    .st-key-ui_recommendation_chart .updatemenu-button + .updatemenu-button{translate:8px 0}
+    .st-key-ui_recommendation_chart [data-prism-view="recommended"] .updatemenu-button:not(.updatemenu-button + .updatemenu-button) .updatemenu-item-rect,
+    .st-key-ui_recommendation_chart [data-prism-view="full"] .updatemenu-button + .updatemenu-button .updatemenu-item-rect{fill:#eeedf9!important;stroke:#8d95ce!important}
     .st-key-prism_unified .ui-rec-title p{line-height:1.35;margin:0 0 0 auto;color:#6c6975;font-size:14px;overflow-wrap:anywhere}
     .st-key-prism_unified [data-testid="stLayoutWrapper"]:has(> .st-key-ui_recommendation_events),
     .st-key-prism_unified .st-key-ui_recommendation_events{display:none}
@@ -394,7 +400,7 @@ def scoped_styles():
     .st-key-prism_unified .prism-detail-image{flex:0 0 auto;background:white;border:1px solid;border-radius:10px;padding:4px}
     .st-key-prism_unified .prism-detail-image img{display:block;width:120px;height:126px;object-fit:contain}
     .st-key-prism_unified .prism-detail-summary{flex:1;min-width:0;padding-right:24px}
-    .st-key-prism_unified .prism-detail-name{font-size:20px;font-weight:bold;line-height:1.15;overflow-wrap:anywhere}
+    .st-key-prism_unified .prism-detail-name{font-size:22px;font-weight:bold;line-height:1.15;overflow-wrap:anywhere}
     .st-key-prism_unified .prism-detail-brand{font-size:13px;color:#61606b;margin:2px 0 5px}
     .st-key-prism_unified .prism-detail-accent{height:2px;margin-bottom:4px}
     .st-key-prism_unified .prism-detail-badges span{background:#e9e7f8;color:#4e5896;border-radius:14px;padding:2px 7px;font-size:12px;display:inline-block;margin:1px 2px 0 0}
@@ -403,6 +409,13 @@ def scoped_styles():
     .st-key-prism_unified .prism-detail-notes{display:grid;grid-template-columns:52px 1fr;gap:4px 8px;font-size:13px;line-height:1.35;margin-top:9px}
     .st-key-prism_unified .prism-detail-notes b{color:#505b9c;white-space:nowrap}
     .st-key-prism_unified{gap:10px}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"]{margin-bottom:5px;min-height:0}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"] p{font-size:14px;line-height:1.25}
+    .st-key-prism_unified .st-key-ui_map_hint p{font-size:13px;line-height:1.3;color:#6c6975}
+    .st-key-prism_unified .st-key-ui_map_hint + [data-testid="stLayoutWrapper"]{margin-top:-4px}
+    .st-key-prism_unified :is(.ui-rec-title h3,.st-key-ui_rows button strong,.prism-detail-badges span,.st-key-ui_filter_toggle code){font-variant-numeric:lining-nums tabular-nums}
+    .st-key-prism_unified :is(.ui-rec-title h3 span,.st-key-ui_rows button code,.st-key-ui_rows button strong:last-of-type,.prism-detail-badges span,.st-key-ui_filter_toggle code){font-family:'Times New Roman',Georgia,serif!important;font-variant-numeric:lining-nums tabular-nums}
+    .st-key-prism_unified .st-key-ui_rows button code{font-size:inherit;font-weight:inherit;color:inherit;background:transparent;padding:0}
     .st-key-prism_unified .st-key-ui_filter_shell{border:1px solid #e2e1e8;border-radius:12px;background:white;gap:0}
     .st-key-prism_unified .st-key-ui_filter_actions{gap:8px;align-items:center}
     .st-key-prism_unified .st-key-ui_filter_hint{margin-left:auto}

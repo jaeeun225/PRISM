@@ -415,10 +415,9 @@ def render_navigation() -> None:
         _, logo, _ = st.columns([1, 1, 1])
         with logo:
             st.markdown("<span class='prism-nav-marker prism-logo-marker' hidden></span>", unsafe_allow_html=True)
-            st.button("PRISM", key="nav_home", use_container_width=True,
+            st.button("PRISM", key="nav_home", width="stretch",
                       on_click=navigate, args=("home",))
         menus = [
-            ("recommendation", "Perfume Recommendation"),
             ("scent_map", "Interactive Scent Map"),
             ("profile", "My Profile"),
         ]
@@ -426,7 +425,7 @@ def render_navigation() -> None:
             st.markdown("<span class='prism-menu-list' hidden></span>", unsafe_allow_html=True)
             for page, label in menus:
                 st.markdown("<span class='prism-nav-marker' hidden></span>", unsafe_allow_html=True)
-                st.button(label, key=f"nav_{page}", use_container_width=False,
+                st.button(label, key=f"nav_{page}", width="stretch",
                           type="primary" if st.session_state.current_page == page else "secondary",
                           on_click=navigate, args=(page,))
 
@@ -446,11 +445,13 @@ def main() -> None:
     )
     from src.profile_state import restore_route
     restore_route()
+    if st.session_state.current_page == "recommendation":
+        st.session_state.current_page = "scent_map"
     render_navigation()
-    if st.session_state.current_page == "scent_map":
-        render_scent_map()
-    elif st.session_state.current_page == "recommendation":
-        render_recommendation()
+    if st.session_state.current_page in ("scent_map", "recommendation"):
+        import sys
+        from src.integrated_map import render_integrated
+        render_integrated(sys.modules[__name__])
     elif st.session_state.current_page == "profile":
         from src.profile_page import render_profile
         render_profile(

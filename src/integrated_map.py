@@ -10,7 +10,7 @@ from .integrated_ui import (
     spread_section_labels, subset_figure,
 )
 
-STAGE = 'ui-fix5-v1'
+STAGE = 'ui-fix8-v1'
 SEARCH_MARKER_LIMIT = 30
 NATIVE_POINTS = True
 
@@ -136,9 +136,9 @@ def figure_for(settings, identifier, filters, stage, _api):
                 'yaxis.range[0]': float(y_range[0]), 'yaxis.range[1]': float(y_range[1]),
             }])
 
-        fig.update_layout(margin_t=45, updatemenus=[dict(
+        fig.update_layout(margin_t=52, updatemenus=[dict(
             type='buttons', direction='right', showactive=False, active=-1,
-            x=0.015, y=1.08, xanchor='left', yanchor='top',
+            x=0.0, y=1.0, xanchor='left', yanchor='top',
             pad=dict(t=0, r=0, b=0, l=0), bgcolor='#ffffff',
             bordercolor='#dedce8', borderwidth=1,
             font=dict(family='Georgia', size=14, color='#38364a'),
@@ -277,7 +277,7 @@ def _render_integrated(api):
         query = st.text_input('향수 이름 또는 브랜드 검색',key='integration_search',on_change=reset_search)
     try:
         settings = tuple(sorted(api.data_settings().items()))
-        with st.spinner('향수 데이터를 불러오고 지도를 계산하고 있습니다...'):
+        with st.spinner('지도를 불러오는 중…'):
             display=api.get_display_cache(settings,api.MAP_LOGIC_VERSION)
             catalog = api.get_recommendation_cache(settings,api.RECOMMENDATION_LOGIC_VERSION)[0] if query.strip() or detail else None
     except api.DataLoadError as exc:
@@ -324,11 +324,11 @@ def _render_integrated(api):
                 st.plotly_chart(fig, key='integration_recommendation_map', width='stretch',
                                 theme=None, config=chart_config)
                 point_key = 'ui_recommendation_events'
+                selected_rank = next((r['rank'] for r in results if r['id'] == detail), None)
                 recommendation_clicks(
-                    key=point_key, selected=detail,
+                    key=point_key, selected=detail, rank=selected_rank,
                     on_point=lambda: capture_map(point_key, permitted, point_trigger=True),
                 )
-                selected_rank = next((r['rank'] for r in results if r['id'] == detail), None)
                 show_rank_ring(fig, selected_rank)
                 safe_hint = escape(hint, quote=True)
                 st.html(f'<span class="ui-map-info" tabindex="0" aria-label="{safe_hint}" '

@@ -393,7 +393,7 @@ def render_navigation() -> None:
         "B2L": "logo_scentmap_b2l.svg",
         "B3": "logo_scentmap_b3.svg",
     }
-    mark_file = marks.get(st.query_params.get("logo"), marks["B2"])
+    mark_file = marks.get(st.query_params.get("logo"), marks["B2L"])
     mark = Path(__file__).resolve().parent / "assets" / mark_file
     mark_uri = "data:image/svg+xml;base64," + b64encode(mark.read_bytes()).decode("ascii")
     nav_button = ".st-key-prism_nav button"
@@ -424,7 +424,7 @@ def render_navigation() -> None:
     with st.container(key="prism_nav", horizontal=True, horizontal_alignment="distribute",
                       vertical_alignment="center"):
         st.button("PRISM", key="nav_home", width="content",
-                  on_click=navigate, args=("home",))
+                  on_click=navigate, args=("scent_map",))
         with st.container(key="prism_nav_tabs", width="content", horizontal=True,
                           horizontal_alignment="right"):
             for page, label in [("scent_map", "Interactive Scent Map"), ("profile", "My Profile")]:
@@ -434,7 +434,7 @@ def render_navigation() -> None:
 
 
 def main() -> None:
-    favicon = Path(__file__).resolve().parent / "assets" / "prism-favicon.png"
+    favicon = Path(__file__).resolve().parent / "assets" / "favicon.png"
     st.set_page_config(layout="wide", page_title="PRISM", page_icon=str(favicon))
     # Inject the multiselect chrome rules before any widgets are rendered so
     # reruns do not briefly reveal the native selected capsules.
@@ -451,7 +451,7 @@ def main() -> None:
     )
     from src.profile_state import restore_route
     restore_route()
-    if st.session_state.current_page == "recommendation":
+    if st.session_state.current_page in ("home", "recommendation"):
         st.session_state.current_page = "scent_map"
     render_navigation()
     if st.session_state.current_page in ("scent_map", "recommendation"):

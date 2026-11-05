@@ -172,8 +172,11 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
     with Image.open(Path(__file__).resolve().parents[1] / 'assets' / 'logo_mark.png') as logo:
         mark = logo.convert('RGBA').resize((mark_size, mark_size), Image.Resampling.LANCZOS)
         image.paste(mark, (brand_x, 61), mark)
-    d.text((brand_x + mark_size + brand_gap, 85), 'PRISM', font=font(33, True),
-           fill=_mix(bg, fg, .75), anchor='lt' if vertical else None)
+    brand_face = font(33, True)
+    _, glyph_top, _, glyph_bottom = brand_face.getbbox('PRISM')
+    brand_y = 61 + (mark_size - glyph_top - glyph_bottom) / 2
+    d.text((brand_x + mark_size + brand_gap, brand_y), 'PRISM', font=brand_face,
+           fill=_mix(bg, fg, .75))
     text(w/2 if vertical else 70, 140, 'My Scent Profile', 64, True, 'mt' if vertical else None)
     if vertical:
         left, region, bottle_y = 70, 860, 395

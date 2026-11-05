@@ -89,7 +89,7 @@ def markdown_text(value):
 
 def recommendation_rows(results,catalog,selected,api,select):
     lookup=catalog.set_index('_id')
-    with st.container(height=280,border=False,key='ui_rows'):
+    with st.container(height=224,border=False,key='ui_rows'):
         for result in results:
             row=lookup.loc[result['id']]
             label=f"![bottle]({image_source(row,api)}) **`{result['rank']}.` {markdown_text(result['name'])}**  \n{markdown_text(result['brand'])} **{result['final_score']:.4f}**"
@@ -317,17 +317,40 @@ export default function({data, parentElement, setTriggerValue}) {
         graph.addEventListener('click', resetFromToolbar, true);
         document.addEventListener('pointerup', finish, true);
     }
+    const selectionSlot = Symbol.for('prism.recommendation.scrolledSelection');
+    function revealSelection() {
+        const list = host.closest('.st-key-prism_unified')?.querySelector('.st-key-ui_rows');
+        const buttons = list?.querySelectorAll('button');
+        const button = buttons?.[data.rank - 1];
+        if (host[selectionSlot] === data.selected && data.selected) return;
+        if (!data.selected) {
+            delete host[selectionSlot];
+            return;
+        }
+        if (!button || button.getAttribute('kind') !== 'primary') return;
+        const viewport = list.getBoundingClientRect();
+        const row = button.getBoundingClientRect();
+        if (!viewport.height || !row.height) return;
+        host[selectionSlot] = data.selected;
+        if (row.top < viewport.top) list.scrollTop -= viewport.top - row.top + 4;
+        else if (row.bottom > viewport.bottom - 6) list.scrollTop += row.bottom - viewport.bottom + 6;
+    }
+    const frame = requestAnimationFrame(revealSelection);
     const observer = new MutationObserver(() => {
         if (!parentElement.isConnected) cleanup();
-        else attach();
+        else {
+            attach();
+            revealSelection();
+        }
     });
     const cleanup = () => {
+        cancelAnimationFrame(frame);
         observer.disconnect();
         detach();
         if (host[slot] === cleanup) delete host[slot];
     };
     host[slot] = cleanup;
-    observer.observe(document.body, {childList: true, subtree: true});
+    observer.observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['kind']});
     attach();
     return cleanup;
 }
@@ -335,8 +358,9 @@ export default function({data, parentElement, setTriggerValue}) {
     )
 
 
-def recommendation_clicks(*, key, selected, on_point):
-    _recommendation_click_component()(key=key, data={'selected': selected}, on_point_change=on_point)
+def recommendation_clicks(*, key, selected, rank, on_point):
+    _recommendation_click_component()(key=key, data={'selected': selected, 'rank': rank},
+                                      on_point_change=on_point)
 
 
 def spread_section_labels(figure):
@@ -373,14 +397,18 @@ def spread_section_labels(figure):
 def scoped_styles():
     st.html('''<style>
     .st-key-prism_unified .st-key-ui_rows,.st-key-prism_unified .st-key-ui_rows [data-testid="stVerticalBlock"]{gap:10px}
-    .st-key-prism_unified .st-key-ui_rows{padding:4px 2px}
+    .st-key-prism_unified .st-key-ui_rows{padding:4px 2px;overflow-y:scroll!important;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-color:#aca9be #f5f4f9}
+    .st-key-prism_unified .st-key-ui_rows::after{content:'';position:sticky;bottom:0;flex:none;height:6px;margin-top:-6px;background:linear-gradient(transparent,#ebe9f4);pointer-events:none}
     .st-key-prism_unified [data-testid="stMarkdownContainer"]:has(> .ui-rec-title){margin-bottom:0}
     .st-key-prism_unified .ui-rec-title{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin-bottom:7px}
-    .st-key-prism_unified .ui-rec-title h3{font-size:23px!important;font-weight:600!important;line-height:1.2;margin:0;padding:0}
-    .st-key-ui_recommendation_chart .updatemenu-button + .updatemenu-button{translate:8px 0}
+    .st-key-prism_unified .ui-rec-title h3{font-size:20px!important;font-weight:600!important;color:#302e38;line-height:1.2;margin:0;padding:0}
+    .st-key-ui_recommendation_chart .updatemenu-button{translate:12px -43px}
+    .st-key-ui_recommendation_chart .updatemenu-button + .updatemenu-button{translate:18px -43px}
+    .st-key-ui_recommendation_chart .modebar{top:12.4px!important;right:25px!important}
+    .st-key-ui_recommendation_chart .modebar-btn svg{width:18px;height:18px}
     .st-key-ui_recommendation_chart [data-prism-view="recommended"] .updatemenu-button:not(.updatemenu-button + .updatemenu-button) .updatemenu-item-rect,
     .st-key-ui_recommendation_chart [data-prism-view="full"] .updatemenu-button + .updatemenu-button .updatemenu-item-rect{fill:#eeedf9!important;stroke:#8d95ce!important}
-    .st-key-prism_unified .ui-rec-title p{line-height:1.35;margin:0 0 0 auto;color:#6c6975;font-size:14px;overflow-wrap:anywhere}
+    .st-key-prism_unified .ui-rec-title p{line-height:1.35;margin:0 0 0 auto;color:#6c6975;font-size:14px;font-weight:400;overflow-wrap:anywhere}
     .st-key-prism_unified [data-testid="stLayoutWrapper"]:has(> .st-key-ui_recommendation_events),
     .st-key-prism_unified .st-key-ui_recommendation_events{display:none}
     .st-key-prism_unified .st-key-ui_rows button{position:relative;height:46px;min-height:46px;justify-content:flex-start;text-align:left;border:1px solid #e8e7ed;border-radius:9px;background:white;padding:3px 64px 3px 10px}
@@ -395,43 +423,43 @@ def scoped_styles():
     .st-key-prism_unified .st-key-ui_detail{position:relative}
     .st-key-prism_unified .st-key-ui_close{position:absolute;right:10px;top:6px;z-index:3;width:28px}
     .st-key-prism_unified .st-key-ui_close button{font-size:18px;color:#6c6975;min-height:25px;padding:0 6px;background:transparent;border:0}
-    .st-key-prism_unified .prism-detail-card{border:1px solid;border-radius:16px;box-shadow:0 3px 12px #38384b09;padding:10px 16px;box-sizing:border-box}
+    .st-key-prism_unified .prism-detail-card{border:1px solid;border-radius:16px;box-shadow:0 3px 12px #38384b09;padding:8px 16px;box-sizing:border-box}
     .st-key-prism_unified .prism-detail-top{display:flex;align-items:flex-start;gap:12px}
     .st-key-prism_unified .prism-detail-image{flex:0 0 auto;background:white;border:1px solid;border-radius:10px;padding:4px}
     .st-key-prism_unified .prism-detail-image img{display:block;width:120px;height:126px;object-fit:contain}
     .st-key-prism_unified .prism-detail-summary{flex:1;min-width:0;padding-right:24px}
     .st-key-prism_unified .prism-detail-name{font-size:22px;font-weight:bold;line-height:1.15;overflow-wrap:anywhere}
-    .st-key-prism_unified .prism-detail-brand{font-size:13px;color:#61606b;margin:2px 0 5px}
+    .st-key-prism_unified .prism-detail-brand{font-size:13px;color:#61606b;margin:2px 0 4px}
     .st-key-prism_unified .prism-detail-accent{height:2px;margin-bottom:4px}
     .st-key-prism_unified .prism-detail-badges span{background:#e9e7f8;color:#4e5896;border-radius:14px;padding:2px 7px;font-size:12px;display:inline-block;margin:1px 2px 0 0}
     .st-key-prism_unified .prism-detail-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
     .st-key-prism_unified .prism-detail-chips span{border:1px solid;border-radius:16px;padding:1px 6px;color:#2c2c2a;font-size:12px}
-    .st-key-prism_unified .prism-detail-notes{display:grid;grid-template-columns:52px 1fr;gap:4px 8px;font-size:13px;line-height:1.35;margin-top:8px}
+    .st-key-prism_unified .prism-detail-notes{display:grid;grid-template-columns:52px 1fr;gap:4px 8px;font-size:13px;line-height:1.35;margin-top:6px}
     .st-key-prism_unified .prism-detail-notes b{color:#505b9c;white-space:nowrap}
     .st-key-prism_unified{gap:16px}
     .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:56px}
     .st-key-ui_recommendation_chart{position:relative}
     .st-key-ui_recommendation_chart > [data-testid="stElementContainer"]:has(.ui-map-info){position:static}
-    .st-key-ui_recommendation_chart .ui-map-info{position:absolute;left:214px;top:13px;z-index:2;color:#626781;font-size:17px;line-height:24px;cursor:help}
-    .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus-visible)::after{content:attr(data-hint);position:absolute;left:0;top:100%;width:max-content;max-width:min(350px,45vw);border:1px solid #dedce8;border-radius:6px;padding:7px 9px;background:white;color:#4d4b59;font-size:13px;line-height:1.35;box-shadow:0 2px 8px #38384b15;pointer-events:none}
+    .st-key-ui_recommendation_chart .ui-map-info{position:absolute;left:211px;top:14.5px;z-index:2;color:#626781;font-size:18px;line-height:24px;cursor:help}
+    .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus-visible)::after{content:attr(data-hint);position:absolute;left:0;top:100%;width:max-content;max-width:min(600px,calc(100vw - 240px));word-break:keep-all;border:1px solid #dedce8;border-radius:6px;padding:7px 9px;background:white;color:#4d4b59;font-size:13px;line-height:1.35;box-shadow:0 2px 8px #38384b15;pointer-events:none}
     @media(max-width:700px){.st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:16px}}
     .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"]{margin-bottom:5px;min-height:0}
-    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"] p{font-size:14px;line-height:1.25}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"] p{font-size:16px;font-weight:600;color:#302e38;line-height:1.25}
     .st-key-prism_unified :is(.ui-rec-title h3,.st-key-ui_rows button strong,.prism-detail-badges span,.st-key-ui_filter_toggle code){font-variant-numeric:lining-nums tabular-nums}
     .st-key-prism_unified :is(.ui-rec-title h3 span,.st-key-ui_rows button code,.st-key-ui_rows button strong:last-of-type,.prism-detail-badges span,.st-key-ui_filter_toggle code){font-family:'Times New Roman',Georgia,serif!important;font-variant-numeric:lining-nums tabular-nums}
     .st-key-prism_unified .st-key-ui_rows button code{font-size:inherit;font-weight:inherit;color:inherit;background:transparent;padding:0}
     .st-key-prism_unified .st-key-ui_filter_shell{border:1px solid #e2e1e8;border-radius:12px;background:white;gap:0}
     .st-key-prism_unified .st-key-ui_filter_actions{gap:8px;align-items:center}
     .st-key-prism_unified .st-key-ui_filter_hint{margin-left:auto}
-    .st-key-prism_unified .st-key-ui_filter_toggle button{border:0;border-radius:11px;background:white;font-weight:bold;min-height:44px;padding:8px 14px}
+    .st-key-prism_unified .st-key-ui_filter_toggle button{border:0;border-radius:11px;background:white;color:#302e38;font-weight:600;min-height:44px;padding:8px 14px}
     .st-key-prism_unified .st-key-ui_filter_toggle button:hover{background:#f5f4fa;color:inherit}
     .st-key-prism_unified .st-key-ui_filter_toggle button:focus-visible{outline:2px solid #6e7bc9;outline-offset:-2px}
     .st-key-prism_unified .st-key-ui_filter_toggle button *{pointer-events:none}
     .st-key-prism_unified .st-key-ui_filter_toggle button>div,
     .st-key-prism_unified .st-key-ui_filter_toggle [data-has-shortcut],
     .st-key-prism_unified .st-key-ui_filter_toggle [data-testid="stMarkdownContainer"]{width:100%;max-width:none}
-    .st-key-prism_unified .st-key-ui_filter_toggle p{display:flex;align-items:center;justify-content:space-between;gap:4px 12px;flex-wrap:wrap;width:100%;text-align:left}
-    .st-key-prism_unified .st-key-ui_filter_toggle code{background:none;color:#6c6975;font:inherit;font-size:12px;font-weight:400;padding:0;margin-left:auto;white-space:normal}
+    .st-key-prism_unified .st-key-ui_filter_toggle p{display:flex;align-items:center;justify-content:space-between;gap:4px 12px;flex-wrap:wrap;width:100%;text-align:left;font-size:16px;font-weight:600}
+    .st-key-prism_unified .st-key-ui_filter_toggle code{background:none;color:#6c6975;font:inherit;font-size:13px;font-weight:400;padding:0;margin-left:auto;white-space:normal}
     @media(max-width:639px){
         .st-key-prism_unified .st-key-ui_filter_toggle code{flex-basis:100%;margin-left:0}
     }

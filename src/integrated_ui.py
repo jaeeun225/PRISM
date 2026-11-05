@@ -149,29 +149,151 @@ def search_matches_figure(base, locations, *, show_label):
     return figure
 
 
-def overlay_figure(base,identifier,reference,view,results):
-    if not identifier:return base
-    figure=shallow_figure(base)
-    location=view.loc[view['_id']==identifier]
-    if location.empty:return figure
-    row=location.iloc[0];x,y=float(row.scent_map_x),float(row.scent_map_y)
-    for trace in reversed(base.data):
-        if trace.customdata is not None and len(trace.customdata)==1 and trace.customdata[0][-1]==identifier:
-            x,y=float(trace.x[0]),float(trace.y[0]);break
-    match=next((r for r in results if r['id']==identifier),None)
-    if match:
-        radius = (recommendation_marker_size(match['rank']) + 6) / 2
-        figure.add_shape(
-            type='circle', xref='x', yref='y', xsizemode='pixel', ysizemode='pixel',
-            xanchor=x, yanchor=y, x0=-radius, x1=radius, y0=-radius, y1=radius,
-            line=dict(width=2, color='#6E7BC9'), layer='above', name='prism-selection-ring',
-        )
-    elif identifier!=reference:
-        for diameter,color,width in [(13,'#2c2c2a',1.5),(10,'#ffffff',1)]:
-            figure.add_trace(go.Scattergl(x=[x],y=[y],mode='markers',marker=dict(symbol='circle-open',size=diameter,color=color,line=dict(width=width)),customdata=[[identifier]],hoverinfo='skip',showlegend=False))
-        name='<br>'.join(escape(v) for v in textwrap.wrap(str(row['Name']),32)[:2])
-        figure.add_annotation(x=x,y=y,text=name,showarrow=False,xshift=12,yshift=10,xanchor='left',bgcolor='rgba(255,255,255,.88)',borderpad=3,font=dict(size=12,family='Georgia',color='#2c2c2a'))
+def overlay_figure(base, identifier, view):
+    if not identifier:
+        return base
+    location = view.loc[view['_id'] == identifier]
+    if location.empty:
+        return base
+    figure = shallow_figure(base)
+    row = location.iloc[0]
+    x, y = float(row.scent_map_x), float(row.scent_map_y)
+    for diameter, color, width in [(13, '#2c2c2a', 1.5), (10, '#ffffff', 1)]:
+        figure.add_trace(go.Scattergl(
+            x=[x], y=[y], mode='markers', customdata=[[identifier]],
+            marker=dict(symbol='circle-open', size=diameter, color=color, line=dict(width=width)),
+            hoverinfo='skip', showlegend=False,
+        ))
+    name = '<br>'.join(escape(value) for value in textwrap.wrap(str(row['Name']), 32)[:2])
+    figure.add_annotation(x=x, y=y, text=name, showarrow=False, xshift=12, yshift=10,
+                          xanchor='left', bgcolor='rgba(255,255,255,.88)', borderpad=3,
+                          font=dict(size=12, family='Georgia', color='#2c2c2a'))
     return figure
+
+
+@lru_cache(maxsize=1)
+def _recommendation_click_component():
+    # The component forwards individual clicks, independent of Plotly's
+    # toggleable selection. Its ring is separate from the stable figure spec.
+    return st.components.v2.component(
+        'prism_recommendation_clicks',
+        html='<span hidden></span>',
+        isolate_styles=False,
+        js="""
+export default function({data, parentElement, setTriggerValue}) {
+    const host = parentElement.closest('.st-key-ui_recommendation_chart');
+    if (!host) return;
+    // Streamlit can rerun this initializer for new data on the same host.
+    // Explicitly retire the old handlers before attaching their replacements.
+    const slot = Symbol.for('prism.recommendation.clicks');
+    host[slot]?.();
+    let graph;
+    let pending = data.selected;
+    const ring = document.createElement('span');
+    ring.className = 'ui-recommendation-ring';
+    ring.setAttribute('aria-hidden', 'true');
+    function drawRing() {
+        const layout = graph?._fullLayout;
+        const trace = graph?.data?.find(t =>
+            t.hoverinfo !== 'skip' && t.customdata?.[0]?.at(-1) === data.selected
+        );
+        if (!layout || !trace || !data.diameter) {
+            ring.remove();
+            return;
+        }
+        const x = layout.xaxis.d2p(trace.x[0]);
+        const y = layout.yaxis.d2p(trace.y[0]);
+        if (x < 0 || y < 0 || x > layout.xaxis._length || y > layout.yaxis._length) {
+            ring.remove();
+            return;
+        }
+        ring.style.left = (layout.xaxis._offset + x) + 'px';
+        ring.style.top = (layout.yaxis._offset + y) + 'px';
+        ring.style.width = ring.style.height = data.diameter + 'px';
+        const canvas = graph.querySelector('.svg-container');
+        if (canvas && ring.parentElement !== canvas) canvas.append(ring);
+    }
+    let press;
+    function start(event) {
+        press = event.button === 0 && event.target.closest('.nsewdrag')
+            ? {id: event.pointerId, x: event.clientX, y: event.clientY}
+            : undefined;
+    }
+    function finish(event) {
+        if (!press || event.pointerId !== press.id) return;
+        const distance = Math.hypot(event.clientX - press.x, event.clientY - press.y);
+        press = undefined;
+        if (distance > 5 || !graph?.isConnected) return;
+
+        // Hit test the few visible recommendations using the active axes.
+        // Plotly's hover and selection event streams can suppress rapid clicks.
+        const layout = graph._fullLayout;
+        const bounds = graph.querySelector('.svg-container')?.getBoundingClientRect();
+        if (!layout || !bounds) return;
+        const mouseX = event.clientX - bounds.left - layout.xaxis._offset;
+        const mouseY = event.clientY - bounds.top - layout.yaxis._offset;
+        if (mouseX < 0 || mouseX > layout.xaxis._length ||
+            mouseY < 0 || mouseY > layout.yaxis._length) return;
+        let nearest;
+        let bestDistance = Infinity;
+        for (const [index, trace] of graph.data.entries()) {
+            const customdata = trace.customdata?.[0];
+            if (trace.hoverinfo === 'skip' || typeof customdata?.at(-1) !== 'string') continue;
+            const x = trace.x[0];
+            const y = trace.y[0];
+            const delta = Math.hypot(mouseX - layout.xaxis.d2p(x), mouseY - layout.yaxis.d2p(y));
+            const size = Number(Array.isArray(trace.marker.size) ? trace.marker.size[0] : trace.marker.size);
+            if (delta <= size / 2 + 2 && delta <= bestDistance) {
+                nearest = {customdata, curve_number: index, x, y};
+                bestDistance = delta;
+            }
+        }
+        const id = nearest?.customdata.at(-1);
+        if (!id || id === pending) return;
+        pending = id;
+        setTriggerValue('point', nearest);
+    }
+    function detach() {
+        graph?.removeEventListener('pointerdown', start, true);
+        document.removeEventListener('pointerup', finish, true);
+        graph?.removeListener('plotly_afterplot', drawRing);
+        graph?.removeListener('plotly_relayout', drawRing);
+        ring.remove();
+    }
+    function attach() {
+        const next = host.querySelector('[data-testid="stPlotlyChart"] .js-plotly-plot');
+        if (next === graph || !next?.on) return;
+        detach();
+        graph = next;
+        graph.addEventListener('pointerdown', start, true);
+        document.addEventListener('pointerup', finish, true);
+        graph.on('plotly_afterplot', drawRing);
+        graph.on('plotly_relayout', drawRing);
+        drawRing();
+    }
+    const observer = new MutationObserver(() => {
+        if (!parentElement.isConnected) cleanup();
+        else attach();
+    });
+    const cleanup = () => {
+        observer.disconnect();
+        detach();
+        if (host[slot] === cleanup) delete host[slot];
+    };
+    host[slot] = cleanup;
+    observer.observe(document.body, {childList: true, subtree: true});
+    attach();
+    return cleanup;
+}
+""",
+    )
+
+
+def recommendation_clicks(*, key, selected, rank, on_point):
+    diameter = recommendation_marker_size(rank) + 6 if rank is not None else None
+    _recommendation_click_component()(
+        key=key, data={'selected': selected, 'diameter': diameter}, on_point_change=on_point,
+    )
 
 
 def spread_section_labels(figure):
@@ -212,8 +334,13 @@ def scoped_styles():
     @media(max-height:760px){
         .st-key-prism_unified [data-testid="stLayoutWrapper"]:has(> .st-key-ui_rows){height:284px!important;flex:0 0 284px!important}
     }
-    .st-key-prism_unified .st-key-ui_recommendation_heading h3{padding-top:0;padding-bottom:9px}
-    .st-key-prism_unified .st-key-ui_recommendation_heading p{margin:0}
+    .st-key-prism_unified [data-testid="stMarkdownContainer"]:has(> .ui-rec-title){margin-bottom:0}
+    .st-key-prism_unified .ui-rec-title{margin-bottom:12px}
+    .st-key-prism_unified .ui-rec-title h3{line-height:1.2;margin:0 0 7px;padding:0}
+    .st-key-prism_unified .ui-rec-title p{line-height:1.35;margin:0;color:#6c6975;font-size:14px}
+    .st-key-prism_unified [data-testid="stLayoutWrapper"]:has(> .st-key-ui_recommendation_events),
+    .st-key-prism_unified .st-key-ui_recommendation_events{display:none}
+    .st-key-prism_unified .ui-recommendation-ring{position:absolute;box-sizing:border-box;border:2px solid #6e7bc9;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:1}
     .st-key-prism_unified .st-key-ui_rows button{position:relative;min-height:58px;justify-content:flex-start;text-align:left;border:1px solid #e8e7ed;border-radius:9px;background:white;padding:6px 64px 6px 10px}
     .st-key-prism_unified .st-key-ui_rows button[kind="primary"]{background:#eeedf9;border-color:#a9add8}
     .st-key-prism_unified .st-key-ui_rows button>div,.st-key-prism_unified .st-key-ui_rows button [data-has-shortcut]{width:100%;min-width:0;justify-content:flex-start}

@@ -6,10 +6,10 @@ from .catalog_search import find_perfumes
 from .profile_labels import build_label_index, sorted_choices
 from .integrated_ui import (
     add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles,
-    search_matches_figure, section_colors, spread_section_labels, subset_figure,
+    recommendation_clicks, search_matches_figure, section_colors, spread_section_labels, subset_figure,
 )
 
-STAGE = 'ui-fix2-v1'
+STAGE = 'ui-fix3-v1'
 SEARCH_MARKER_LIMIT = 30
 NATIVE_POINTS = True
 
@@ -117,7 +117,7 @@ def figure_for(settings, identifier, filters, stage, _api):
                 neutral = dict(marker=dict(opacity=1))
                 trace.update(selected=neutral, unselected=neutral)
         fig.data = tuple(marker_traces)
-        fig.update_layout(clickmode='event+select' if NATIVE_POINTS else 'event',selectionrevision=str(identifier))
+        fig.update_layout(clickmode='event+select' if NATIVE_POINTS and not identifier else 'event',selectionrevision=str(identifier))
     # Preserve equal coordinate scale; let ranges expand, never shrink the plot domain.
     fig.update_layout(height=520,autosize=True,margin=dict(l=12,r=12,t=16,b=16),
                       modebar=dict(color="#aaa9b5",activecolor="#6E7BC9",bgcolor="rgba(255,255,255,.45)"),
@@ -141,8 +141,13 @@ def select_detail(identifier):
         st.session_state.integration_detail = identifier
 
 
-def capture_map(key, permitted):
-    identifier=point_identifier(st.session_state.get(key,{}))
+def capture_map(key, permitted, *, point_trigger=False):
+    state = st.session_state.get(key, {})
+    if point_trigger:
+        point = state.get('point') or {}
+        identifier = point_identifier({'selection': {'points': [point]}})
+    else:
+        identifier = point_identifier(state)
     if identifier and (permitted is None or identifier in permitted):
         select_detail(identifier)
 
@@ -280,25 +285,41 @@ def _render_integrated(api):
     if search_ids:
         matches = api.get_coordinates([i for i in search_ids if i != detail], display['view'])
         base_figure = search_matches_figure(base_figure, matches, show_label=len(search_ids) == 1)
-    fig=overlay_figure(base_figure,detail,identifier,display['view'],results)
+    fig = base_figure if identifier else overlay_figure(base_figure, detail, display['view'])
     permitted={identifier,*(r['id'] for r in results)} if identifier else None
     left,right = st.columns([3,2],gap='medium')
     with left:
-        st.caption('마우스 휠: 확대·축소 · 드래그: 영역 확대 · 점 클릭: 상세 정보 · 더블클릭: 전체 보기')
+        reset_hint = '도구 모음의 초기화: 전체 보기' if identifier else '더블클릭: 전체 보기'
+        st.caption('마우스 휠: 확대·축소 · 드래그: 영역 확대 · 점 클릭: 상세 정보 · ' + reset_hint)
         if visible_count==0:st.caption('조건에 맞는 향수가 없습니다')
-        map_key='integration_map_'+str(identifier)+'_'+str(st.session_state.get('integration_epoch',0))
-        st.plotly_chart(fig,key=map_key,width='stretch',theme=None,
-                        on_select=lambda:capture_map(map_key,permitted),selection_mode='points',
-                        config=dict(scrollZoom=True,displaylogo=False,doubleClick='autosize',
-                                    modeBarButtonsToRemove=['toImage','select2d','lasso2d','autoScale2d']))
+        chart_config = dict(scrollZoom=True, displaylogo=False, doubleClick='autosize',
+                            modeBarButtonsToRemove=['toImage','select2d','lasso2d','autoScale2d'])
+        if identifier:
+            # A constant chart spec keeps the browser zoom and pan across detail updates.
+            chart_config.update(doubleClick=False, doubleClickDelay=0)
+            with st.container(key='ui_recommendation_chart', gap=None):
+                st.plotly_chart(fig, key='integration_recommendation_map', width='stretch',
+                                theme=None, config=chart_config)
+                point_key = 'ui_recommendation_events'
+                recommendation_clicks(
+                    key=point_key, selected=detail,
+                    rank=next((r['rank'] for r in results if r['id'] == detail), None),
+                    on_point=lambda: capture_map(point_key, permitted, point_trigger=True),
+                )
+        else:
+            map_key = 'integration_map_' + str(st.session_state.get('integration_epoch', 0))
+            st.plotly_chart(fig, key=map_key, width='stretch', theme=None,
+                            on_select=lambda: capture_map(map_key, permitted),
+                            selection_mode='points', config=chart_config)
         if identifier: st.caption('기준 향수는 작은 이중 테두리, 추천 향수는 순위 번호로 표시됩니다.')
         if filters: st.caption('필터는 배경 분포에 적용됩니다. 기준 향수와 추천 Top 10은 비교를 위해 유지합니다.')
     with right:
         if results:
             with st.container(key='ui_recommendation_heading', gap=None):
-                st.subheader('추천 Top 10')
-                st.caption('기준: '+str(catalog.set_index('_id').loc[identifier,'Name']))
-            recommendation_rows(results,catalog,detail,api,select_detail)
+                name = escape(str(catalog.set_index('_id').loc[identifier, 'Name']))
+                st.markdown(f'<div class="ui-rec-title"><h3>추천 Top 10</h3>'
+                            f'<p>기준: {name}</p></div>', unsafe_allow_html=True)
+                recommendation_rows(results,catalog,detail,api,select_detail)
         elif not detail:
             st.caption('향수를 검색하고 기준 향수를 선택하면 추천 Top 10이 표시됩니다.')
         if catalog is not None and detail and catalog['_id'].eq(detail).any():

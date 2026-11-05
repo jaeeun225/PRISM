@@ -10,8 +10,7 @@ from .integrated_ui import (
     spread_section_labels, subset_figure,
 )
 
-STAGE = 'ui-fix4-v1'
-RECOMMENDATION_DOUBLE_CLICK_DELAY = 175
+STAGE = 'ui-fix5-v1'
 SEARCH_MARKER_LIMIT = 30
 NATIVE_POINTS = True
 
@@ -127,8 +126,29 @@ def figure_for(settings, identifier, filters, stage, _api):
                       xaxis=dict(domain=[0,1],constrain='range'),
                       yaxis=dict(domain=[0,1],constrain='range',scaleanchor='x',scaleratio=1),
                       uirevision=str(identifier)+str(filters))
-    if not identifier:
-        fig.update_layout(xaxis_range=[-1.22,1.22],yaxis_range=[-1.22,1.22])
+    full_range = [-1.22, 1.22]
+    if identifier:
+        def view_button(label, x_range, y_range):
+            return dict(label=label, method='relayout', args=[{
+                'xaxis.autorange': False, 'yaxis.autorange': False,
+                # Scalar endpoints stay fixed even when Plotly mutates its live ranges.
+                'xaxis.range[0]': float(x_range[0]), 'xaxis.range[1]': float(x_range[1]),
+                'yaxis.range[0]': float(y_range[0]), 'yaxis.range[1]': float(y_range[1]),
+            }])
+
+        fig.update_layout(margin_t=45, updatemenus=[dict(
+            type='buttons', direction='right', showactive=False, active=-1,
+            x=0.015, y=1.08, xanchor='left', yanchor='top',
+            pad=dict(t=0, r=0, b=0, l=0), bgcolor='#ffffff',
+            bordercolor='#dedce8', borderwidth=1,
+            font=dict(family='Georgia', size=11, color='#38364a'),
+            buttons=[
+                view_button('추천 범위', fig.layout.xaxis.range, fig.layout.yaxis.range),
+                view_button('전체 지도', full_range, full_range),
+            ],
+        )])
+    else:
+        fig.update_layout(xaxis_range=full_range, yaxis_range=full_range)
     return spread_section_labels(fig)
 
 
@@ -292,18 +312,14 @@ def _render_integrated(api):
     permitted={identifier,*(r['id'] for r in results)} if identifier else None
     left,right = st.columns([3,2],gap='medium')
     with left:
-        reset_hint = ('더블클릭: 추천 범위 초기화' if RECOMMENDATION_DOUBLE_CLICK_DELAY
-                      else '도구 모음의 초기화: 추천 범위 보기') if identifier else '더블클릭: 전체 보기'
+        reset_hint = '더블클릭·홈: 추천 범위 · 전체 지도 버튼: 전체 보기' if identifier else '더블클릭: 전체 보기'
         st.caption('마우스 휠: 확대·축소 · 드래그: 영역 확대 · 점 클릭: 상세 정보 · ' + reset_hint)
         if visible_count==0:st.caption('조건에 맞는 향수가 없습니다')
         chart_config = dict(scrollZoom=True, displaylogo=False, doubleClick='autosize',
                             modeBarButtonsToRemove=['toImage','select2d','lasso2d','autoScale2d'])
         if identifier:
             # A constant chart spec keeps the browser zoom and pan across detail updates.
-            chart_config.update(
-                doubleClick='reset' if RECOMMENDATION_DOUBLE_CLICK_DELAY else False,
-                doubleClickDelay=RECOMMENDATION_DOUBLE_CLICK_DELAY,
-            )
+            chart_config.update(doubleClick=False, doubleClickDelay=0)
             with st.container(key='ui_recommendation_chart', gap=None):
                 st.plotly_chart(fig, key='integration_recommendation_map', width='stretch',
                                 theme=None, config=chart_config)

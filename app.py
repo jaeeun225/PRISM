@@ -383,34 +383,41 @@ def navigate(page: str) -> None:
 
 
 def render_navigation() -> None:
+    from base64 import b64encode
+
+    mark = Path(__file__).resolve().parent / "assets" / "prism-spiral.svg"
+    mark_uri = "data:image/svg+xml;base64," + b64encode(mark.read_bytes()).decode("ascii")
     nav_button = ".st-key-prism_nav button"
     logo_button = ".st-key-prism_nav .st-key-nav_home button"
     menu_list = ".st-key-prism_nav_tabs"
     menu_button = f"{menu_list} button"
-    st.markdown(
+    st.html(
         "<style>"
+        "@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap');"
         "[data-baseweb='tag'], [data-baseweb*='tag'], [data-testid*='MultiSelectTag'], [class*='st-key-accord_selector'] [data-baseweb='tag'], [data-baseweb='tag'] span[title], [role='button'][aria-label*='close by backspace'], [aria-label*=', close by backspace'] {display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;}"
         "html, body, [data-testid='stAppViewContainer'], [data-testid='stAppViewContainer'] * {font-family:Georgia,'Times New Roman',serif!important;}"
         "[data-baseweb='menu'], [data-baseweb='menu'] *, [data-baseweb='popover'], [data-baseweb='popover'] *, [data-baseweb='tooltip'], [data-baseweb='tooltip'] *, [role='listbox'], [role='listbox'] *, [role='option'], [role='tooltip'], [role='tooltip'] * {font-family:Georgia,'Times New Roman',serif!important;}"
         f"{nav_button} {{background:transparent!important;border:0!important;box-shadow:none!important;border-radius:0!important;color:#333!important;padding:0.25rem 0.15rem!important;}}"
-        f"{nav_button} p {{font-family:Georgia,'Times New Roman',serif!important;font-size:clamp(16px,1.8vw,22px)!important;font-weight:600;}}"
+        f"{nav_button} p {{font-family:'Playfair Display',Georgia,serif!important;font-size:clamp(14px,1.6vw,17px)!important;font-weight:600;}}"
         f"{nav_button}[kind='primary'], {nav_button}:hover {{color:#000!important;}}"
-        f"{nav_button}[kind='primary'] p {{font-weight:800!important;}}"
         f"{nav_button}:focus-visible {{outline:1px solid currentColor!important;outline-offset:3px;}}"
-        f"{logo_button} {{color:#000!important;min-height:0!important;}}"
-        f"{logo_button} p {{font-size:38px!important;line-height:1!important;font-weight:700!important;letter-spacing:0.02em;}}"
-        f"{menu_list} {{position:relative;display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;justify-content:center;align-items:center;gap:0.5rem 2.5rem!important;margin-bottom:0;width:100%!important;box-sizing:border-box;}}"
-        f"{menu_list}::after {{content:'';position:absolute;left:0;bottom:0;width:100%;height:1px;background:#D0D0D0;box-shadow:0 0 0 100vmax #D0D0D0;clip-path:inset(0 -100vmax);pointer-events:none;}}"
-        f"{menu_list} > div, {menu_list} [data-testid='stButton'] {{width:max-content!important;max-width:100%;flex:0 0 auto!important;}}"
+        ".st-key-prism_nav {position:relative;justify-content:space-between!important;align-items:center!important;gap:8px 20px!important;padding-bottom:14px;}"
+        ".st-key-prism_nav::after {content:'';position:absolute;left:0;bottom:0;width:100%;height:1px;background:#e5e4e8;}"
+        f"{logo_button} {{color:#000!important;min-height:0!important;gap:14px;}}"
+        f"{logo_button}::before {{content:'';width:42px;height:42px;flex:none;background:url('{mark_uri}') center/contain no-repeat;}}"
+        f"{logo_button} p {{font-size:24px!important;line-height:1!important;font-weight:700!important;letter-spacing:0.18em;}}"
+        f"{menu_list} {{display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;justify-content:flex-end;align-items:center;gap:2px 24px!important;width:fit-content!important;}}"
         f"{menu_button} {{position:relative;white-space:nowrap;padding-bottom:0.4rem!important;}}"
         f"{menu_button}::after {{content:'';position:absolute;left:0.15rem;right:0.15rem;bottom:0;height:2px;background:transparent;z-index:1;}}"
         f"{menu_button}[kind='primary']::after {{background:linear-gradient(90deg,#6E7BC9,#8F99D8);}}"
-        "</style>", unsafe_allow_html=True,
+        "</style>",
     )
-    with st.container(key="prism_nav", gap=None):
-        st.button("PRISM", key="nav_home", width="stretch",
+    with st.container(key="prism_nav", horizontal=True, horizontal_alignment="distribute",
+                      vertical_alignment="center"):
+        st.button("PRISM", key="nav_home", width="content",
                   on_click=navigate, args=("home",))
-        with st.container(key="prism_nav_tabs", horizontal=True, horizontal_alignment="center"):
+        with st.container(key="prism_nav_tabs", width="content", horizontal=True,
+                          horizontal_alignment="right"):
             for page, label in [("scent_map", "Interactive Scent Map"), ("profile", "My Profile")]:
                 st.button(label, key=f"nav_{page}", width="content",
                           type="primary" if st.session_state.current_page == page else "secondary",
@@ -418,13 +425,14 @@ def render_navigation() -> None:
 
 
 def main() -> None:
-    st.set_page_config(layout="wide", page_title="PRISM", page_icon="◉")
+    favicon = Path(__file__).resolve().parent / "assets" / "prism-favicon.png"
+    st.set_page_config(layout="wide", page_title="PRISM", page_icon=str(favicon))
     # Inject the multiselect chrome rules before any widgets are rendered so
     # reruns do not briefly reveal the native selected capsules.
     st.html(
         "<style id='prism-native-chip-visibility'>"
         "[data-testid='stHeader'], [data-testid='stToolbar'], [data-testid='stDecoration'] {display:none!important;}"
-        "[data-testid='stMainBlockContainer'] {padding-top:1rem;}"
+        "[data-testid='stMainBlockContainer'] {padding-top:20px;}"
         "[data-baseweb='tag'], [data-testid='stMultiSelectTag'] "
         "{display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;background:#6E7BC9!important;color:#FFFFFF!important;border:1px solid #5967B5!important;border-radius:999px!important;padding:0.2rem 0.7rem!important;font-family:Georgia,'Times New Roman',serif!important;}"
         "[data-baseweb='tag'] *, [data-testid='stMultiSelectTag'] * {font-family:Georgia,'Times New Roman',serif!important;color:#FFFFFF!important;}"

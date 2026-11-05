@@ -207,7 +207,7 @@ def _recommendation_click_component():
         'prism_recommendation_clicks',
         html='<span hidden></span>',
         isolate_styles=False,
-        js="""
+        js=r"""
 export default function({data, parentElement, setTriggerValue}) {
     const host = parentElement.closest('.st-key-ui_recommendation_chart');
     if (!host) return;
@@ -217,6 +217,32 @@ export default function({data, parentElement, setTriggerValue}) {
     host[slot]?.();
     let graph;
     let pending = data.selected;
+    // Keep click cadence across component updates caused by opening a card.
+    const previousClick = Symbol.for('prism.recommendation.lastClick');
+    const atRecommendation = Symbol.for('prism.recommendation.initialRange');
+
+    function trackRange(changes) {
+        const endpoints = ['xaxis.range[0]', 'xaxis.range[1]', 'yaxis.range[0]', 'yaxis.range[1]'];
+        if (!Object.keys(changes).some(key => /^[xy]axis\.(range|autorange)/.test(key))) return;
+        const initial = graph.layout.updatemenus[0].buttons[0].args[0];
+        graph[atRecommendation] = endpoints.every(key => changes[key] === initial[key]);
+    }
+
+    function resetRecommendation() {
+        const button = [...graph.querySelectorAll('.updatemenu-button')]
+            .find(element => element.textContent.trim() === '추천 범위');
+        if (!button) return false;
+        // A repeated point click at the default range needs no Plotly redraw.
+        if (graph[atRecommendation]) return true;
+        button.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+        return true;
+    }
+
+    function resetFromToolbar(event) {
+        if (event.target.closest('.modebar-btn[data-title="Reset axes"]') && resetRecommendation()) {
+            event.stopImmediatePropagation();
+        }
+    }
     let press;
     function start(event) {
         press = event.button === 0 && event.target.closest('.nsewdrag')
@@ -227,7 +253,10 @@ export default function({data, parentElement, setTriggerValue}) {
         if (!press || event.pointerId !== press.id) return;
         const distance = Math.hypot(event.clientX - press.x, event.clientY - press.y);
         press = undefined;
-        if (distance > 5 || !graph?.isConnected) return;
+        if (distance > 5 || !graph?.isConnected) {
+            delete host[previousClick];
+            return;
+        }
 
         // Hit test the few visible recommendations using the active axes.
         // Plotly's hover and selection event streams can suppress rapid clicks.
@@ -253,20 +282,36 @@ export default function({data, parentElement, setTriggerValue}) {
             }
         }
         const id = nearest?.customdata.at(-1);
+        const last = host[previousClick];
+        const now = performance.now();
+        if (last?.graph === graph && now - last.time <= 370 && last.id === id &&
+            Math.hypot(mouseX - last.x, mouseY - last.y) <= 8) {
+            delete host[previousClick];
+            requestAnimationFrame(() => {
+                if (graph?.isConnected) resetRecommendation();
+            });
+            return;
+        }
+        host[previousClick] = {graph, id, time: now, x: mouseX, y: mouseY};
         if (!id || id === pending) return;
         pending = id;
         setTriggerValue('point', nearest);
     }
     function detach() {
         graph?.removeEventListener('pointerdown', start, true);
+        graph?.removeEventListener('click', resetFromToolbar, true);
+        graph?.removeListener('plotly_relayout', trackRange);
         document.removeEventListener('pointerup', finish, true);
     }
     function attach() {
         const next = host.querySelector('[data-testid="stPlotlyChart"] .js-plotly-plot');
-        if (next === graph || !next) return;
+        if (next === graph || !next?.on) return;
         detach();
         graph = next;
+        graph[atRecommendation] ??= true;
+        graph.on('plotly_relayout', trackRange);
         graph.addEventListener('pointerdown', start, true);
+        graph.addEventListener('click', resetFromToolbar, true);
         document.addEventListener('pointerup', finish, true);
     }
     const observer = new MutationObserver(() => {
@@ -347,8 +392,8 @@ def scoped_styles():
     .st-key-prism_unified .prism-detail-card{border:1px solid;border-radius:16px;box-shadow:0 3px 12px #38384b09;padding:14px 16px;box-sizing:border-box}
     .st-key-prism_unified .prism-detail-top{display:flex;align-items:flex-start;gap:12px}
     .st-key-prism_unified .prism-detail-image{flex:0 0 auto;background:white;border:1px solid;border-radius:10px;padding:4px}
-    .st-key-prism_unified .prism-detail-image img{display:block;width:76px;height:76px;object-fit:contain}
-    .st-key-prism_unified .prism-detail-summary{flex:1;min-width:0;padding-right:14px}
+    .st-key-prism_unified .prism-detail-image img{display:block;width:120px;height:126px;object-fit:contain}
+    .st-key-prism_unified .prism-detail-summary{flex:1;min-width:0;padding-right:24px}
     .st-key-prism_unified .prism-detail-name{font-size:20px;font-weight:bold;line-height:1.15;overflow-wrap:anywhere}
     .st-key-prism_unified .prism-detail-brand{font-size:13px;color:#61606b;margin:2px 0 5px}
     .st-key-prism_unified .prism-detail-accent{height:2px;margin-bottom:4px}

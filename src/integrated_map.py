@@ -4,9 +4,13 @@ import plotly.graph_objects as go
 from html import escape
 from .catalog_search import find_perfumes
 from .profile_labels import build_label_index, sorted_choices
-from .integrated_ui import detail_panel, recommendation_rows, overlay_figure, scoped_styles, section_colors, subset_figure, spread_section_labels
+from .integrated_ui import (
+    add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles,
+    search_matches_figure, section_colors, spread_section_labels, subset_figure,
+)
 
-STAGE = 'ui-stage3-v1'
+STAGE = 'ui-fix1-v1'
+SEARCH_MARKER_LIMIT = 30
 NATIVE_POINTS = True
 
 
@@ -49,6 +53,7 @@ def figure_for(settings, identifier, filters, stage, _api):
         recommendation_end=len(fig.data)
         base = _api.get_coordinates([identifier], view)
         if not base.empty:
+            add_search_halo(fig, base)
             fig.add_trace(go.Scattergl(x=base.scent_map_x, y=base.scent_map_y, mode='markers',
                                       marker=dict(size=12, color='#2c2c2a'),hoverinfo='skip',showlegend=False))
             fig.add_trace(_api.build_highlight_trace(base,{identifier:1},marker_size=9,
@@ -207,10 +212,10 @@ def filters_ui(api,settings,view):
     opened=st.session_state.get('ui_filter_open',False)
     status='전체 선택' if not filters else f'{len(filters)}개 어코드 선택'
     with st.container(key='ui_filter_shell'):
-        with st.container(horizontal=True,vertical_alignment='center',key='ui_filter_header'):
-            st.button(('▾' if opened else '▸')+' 어코드 필터',type='tertiary',key='ui_filter_toggle',on_click=toggle_filter)
-            with st.container(key='ui_filter_summary',width='content'):
-                st.caption(f'현재: {status} · 표시 중 {count:,} / {len(view):,}개')
+        title = ('▾' if opened else '▸') + ' 어코드 필터'
+        summary = f'현재: {status} · 표시 중 {count:,} / {len(view):,}개'
+        st.button(f'{title} `{summary}`', type='tertiary', key='ui_filter_toggle',
+                  width='stretch', on_click=toggle_filter)
         if opened:
             st.markdown('<div class="ui-filter-divider"></div>',unsafe_allow_html=True)
             filter_editor(api,groups)
@@ -237,6 +242,7 @@ def _render_integrated(api):
     except api.DataLoadError as exc:
         st.error(str(exc)); return
     identifier = None
+    search_ids = ()
     if query.strip():
         choices = find_perfumes(catalog,query)
         index = build_label_index(choices)
@@ -246,6 +252,11 @@ def _render_integrated(api):
             with selection_column:
                 identifier = st.selectbox('기준 향수 선택',ordered_ids,index=None,format_func=labels.get,
                                           key='integration_base',on_change=clear_details)
+            if identifier is None:
+                if len(choices) <= SEARCH_MARKER_LIMIT:
+                    search_ids = ordered_ids
+                else:
+                    st.caption(f'{len(choices):,}개 일치 — 목록에서 선택하세요')
         else:
             st.caption('일치하는 향수가 없습니다.')
     filters,visible_count=filters_ui(api,settings,display['view'])
@@ -253,6 +264,9 @@ def _render_integrated(api):
     detail=st.session_state.get('integration_detail')
     figure_version=STAGE+api.MAP_LOGIC_VERSION+api.RECOMMENDATION_LOGIC_VERSION
     base_figure=figure_for(settings,identifier,filters,figure_version,api)
+    if search_ids:
+        matches = api.get_coordinates(search_ids, display['view'])
+        base_figure = search_matches_figure(base_figure, matches)
     fig=overlay_figure(base_figure,detail,identifier,display['view'],results)
     permitted={identifier,*(r['id'] for r in results)} if identifier else None
     left,right = st.columns([3,2],gap='medium')

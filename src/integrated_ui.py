@@ -84,7 +84,7 @@ def markdown_text(value):
 
 def recommendation_rows(results,catalog,selected,api,select):
     lookup=catalog.set_index('_id')
-    with st.container(height=326,border=False,key='ui_rows'):
+    with st.container(height=520,border=False,key='ui_rows'):
         for result in results:
             row=lookup.loc[result['id']]
             label=f"![bottle]({image_source(row,api)}) **{result['rank']}. {markdown_text(result['name'])}**  \n{markdown_text(result['brand'])} **{result['final_score']:.4f}**"
@@ -116,6 +116,39 @@ def subset_figure(base,visible,reference,filters):
     return figure
 
 
+def add_search_halo(figure, locations):
+    figure.add_trace(go.Scattergl(
+        x=locations.scent_map_x, y=locations.scent_map_y, mode='markers',
+        marker=dict(size=20, color='rgba(255,255,255,.8)'),
+        hoverinfo='skip', showlegend=False,
+    ))
+
+
+def search_matches_figure(base, locations):
+    if locations.empty:
+        return base
+    figure = shallow_figure(base)
+    add_search_halo(figure, locations)
+    figure.add_trace(go.Scattergl(
+        x=locations.scent_map_x, y=locations.scent_map_y, mode='markers',
+        marker=dict(size=12, color=locations.marker_rgb.tolist(),
+                    line=dict(width=1.5, color='#2c2c2a')),
+        customdata=list(zip(locations['Name'], locations['Brand'], locations['_id'])),
+        hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]}<extra></extra>',
+        selected=dict(marker=dict(opacity=1)), unselected=dict(marker=dict(opacity=1)),
+        showlegend=False,
+    ))
+    if len(locations) == 1:
+        row = locations.iloc[0]
+        figure.add_annotation(
+            x=row.scent_map_x, y=row.scent_map_y, text=escape(str(row['Name'])),
+            showarrow=False, xanchor='right' if row.scent_map_x > 0 else 'left',
+            xshift=-12 if row.scent_map_x > 0 else 12, yshift=10, borderpad=3,
+            bgcolor='rgba(255,255,255,.88)', font=dict(family='Georgia', size=12, color='#2c2c2a'),
+        )
+    return figure
+
+
 def overlay_figure(base,identifier,reference,view,results):
     if not identifier:return base
     figure=shallow_figure(base)
@@ -144,30 +177,33 @@ def spread_section_labels(figure):
     placed=[]
     labels=[(a,a.text[3:-4]) for a in figure.layout.annotations
             if a.text and a.text.startswith('<b>') and a.text.endswith('</b>') and a.text[3:-4] in SECTION_ORDER]
-    # Conservative scale for the 520px full-wheel plot. Zoom-in increases
-    # anchor spacing, while the local offsets stay fixed in pixels.
-    for a,name in sorted(labels,key=lambda item:abs(float(item[0].x))):
-        x,y=float(a.x)*190,float(a.y)*190
-        w=float(font.getlength(name))+10
-        h=22
-        dx=dy=0
-        sign=-1 if x<0 else 1
-        def collides(dx,dy):
-            return any(abs(x+dx-u)<(w+ow)/2 and abs(y+dy-v)<(h+oh)/2 for u,v,ow,oh in placed)
-        for lane in range(3):
-            for step in range(8):
-                dx=step*8*sign
-                dy=lane*17*(-1 if y>=0 else 1)
-                if not collides(dx,dy):break
-            if not collides(dx,dy):break
-        a.update(xshift=dx,yshift=dy,font_family='Georgia, Times New Roman, serif')
-        placed.append((x+dx,y+dy,w,h))
+    # Check the same pixel offsets across narrow and wide full-map scales.
+    scales = range(160, 206, 5)
+    offsets = sorted(((dx, dy) for dx in range(-40, 41, 4) for dy in range(-36, 37, 4)),
+                     key=lambda shift: shift[0] ** 2 + shift[1] ** 2)
+    for annotation, name in sorted(labels, key=lambda item: abs(float(item[0].x))):
+        x, y = float(annotation.x), float(annotation.y)
+        width, height = float(font.getlength(name)) + 12, 22
+
+        def fits(dx, dy):
+            return not any(
+                abs((x-u)*scale + dx-ox) < (width+ow)/2 and
+                abs((y-v)*scale + dy-oy) < (height+oh)/2
+                for u, v, ox, oy, ow, oh in placed for scale in scales
+            )
+
+        dx, dy = next((shift for shift in offsets if fits(*shift)), (0, 0))
+        annotation.update(xshift=dx, yshift=dy, font_family='Georgia, Times New Roman, serif')
+        if name == 'Woody Amber':
+            annotation.update(bgcolor='rgba(250,250,248,0.8)', borderpad=1)
+        placed.append((x, y, dx, dy, width, height))
     return figure
 
 
 def scoped_styles():
     st.html('''<style>
     .st-key-prism_unified .st-key-ui_rows,.st-key-prism_unified .st-key-ui_rows [data-testid="stVerticalBlock"]{gap:6px}
+    .st-key-prism_unified .st-key-ui_rows{padding:4px 2px}
     .st-key-prism_unified .st-key-ui_rows button{position:relative;min-height:58px;justify-content:flex-start;text-align:left;border:1px solid #e8e7ed;border-radius:9px;background:white;padding:6px 64px 6px 10px}
     .st-key-prism_unified .st-key-ui_rows button[kind="primary"]{background:#eeedf9;border-color:#a9add8}
     .st-key-prism_unified .st-key-ui_rows button>div,.st-key-prism_unified .st-key-ui_rows button [data-has-shortcut]{width:100%;min-width:0;justify-content:flex-start}
@@ -182,10 +218,22 @@ def scoped_styles():
     .st-key-prism_unified .st-key-ui_close button{font-size:18px;color:#6c6975;min-height:25px;padding:0 6px;background:transparent;border:0}
     .st-key-prism_unified .prism-detail-badges span{background:#e9e7f8;color:#4e5896;border-radius:14px;padding:4px 8px;font-size:12px;display:inline-block;margin:2px 2px 0 0}
     .st-key-prism_unified{gap:18px}
-    .st-key-prism_unified .st-key-ui_filter_shell{border:1px solid #e2e1e8;border-radius:12px;padding:8px 14px;background:white;gap:8px}
-    .st-key-prism_unified .st-key-ui_filter_header,.st-key-prism_unified .st-key-ui_filter_actions{gap:8px;align-items:center}
-    .st-key-prism_unified .st-key-ui_filter_summary,.st-key-prism_unified .st-key-ui_filter_hint{margin-left:auto}
-    .st-key-prism_unified .st-key-ui_filter_toggle button{border:0;background:transparent;font-weight:bold;min-height:32px;padding:3px 6px}
+    .st-key-prism_unified .st-key-ui_filter_shell{border:1px solid #e2e1e8;border-radius:12px;background:white;gap:8px}
+    .st-key-prism_unified .st-key-ui_filter_shell> :not(.st-key-ui_filter_toggle){margin-inline:14px;width:calc(100% - 28px)}
+    .st-key-prism_unified .st-key-ui_filter_actions{gap:8px;align-items:center}
+    .st-key-prism_unified .st-key-ui_filter_hint{margin-left:auto}
+    .st-key-prism_unified .st-key-ui_filter_toggle button{border:0;border-radius:11px;background:white;font-weight:bold;min-height:44px;padding:8px 14px}
+    .st-key-prism_unified .st-key-ui_filter_toggle button:hover{background:#f5f4fa;color:inherit}
+    .st-key-prism_unified .st-key-ui_filter_toggle button:focus-visible{outline:2px solid #6e7bc9;outline-offset:-2px}
+    .st-key-prism_unified .st-key-ui_filter_toggle button *{pointer-events:none}
+    .st-key-prism_unified .st-key-ui_filter_toggle button>div,
+    .st-key-prism_unified .st-key-ui_filter_toggle [data-has-shortcut],
+    .st-key-prism_unified .st-key-ui_filter_toggle [data-testid="stMarkdownContainer"]{width:100%;max-width:none}
+    .st-key-prism_unified .st-key-ui_filter_toggle p{display:flex;align-items:center;justify-content:space-between;gap:4px 12px;flex-wrap:wrap;width:100%;text-align:left}
+    .st-key-prism_unified .st-key-ui_filter_toggle code{background:none;color:#6c6975;font:inherit;font-size:12px;font-weight:400;padding:0;margin-left:auto;white-space:normal}
+    @media(max-width:639px){
+        .st-key-prism_unified .st-key-ui_filter_toggle code{flex-basis:100%;margin-left:0}
+    }
     .st-key-prism_unified .ui-filter-divider{height:1px;background:#ebeaf0}
     .st-key-prism_unified .st-key-ui_filter_actions button{min-height:34px;padding:4px 12px;font-size:14px}
     .st-key-prism_unified .st-key-ui_filter_grid [data-testid="stHorizontalBlock"]{align-items:stretch}

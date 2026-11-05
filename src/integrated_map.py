@@ -9,7 +9,7 @@ from .integrated_ui import (
     search_matches_figure, section_colors, spread_section_labels, subset_figure,
 )
 
-STAGE = 'ui-fix1-v1'
+STAGE = 'ui-fix2-v1'
 SEARCH_MARKER_LIMIT = 30
 NATIVE_POINTS = True
 
@@ -60,7 +60,7 @@ def figure_for(settings, identifier, filters, stage, _api):
                                                      show_rank=False,white_width=.7))
             ref=base.iloc[0]
             fig.add_annotation(x=ref.scent_map_x,y=ref.scent_map_y,text=escape(str(ref['Name'])),
-                               showarrow=False,xanchor='left',xshift=10,yshift=8,borderpad=3,
+                               showarrow=False,xanchor='right',xshift=-10,yshift=8,borderpad=3,
                                bgcolor='rgba(255,255,255,.88)',font=dict(family='Georgia',size=12,color='#2c2c2a'))
             # Include the reference point without changing recommendation jitter.
             for axis, column in [('xaxis','scent_map_x'),('yaxis','scent_map_y')]:
@@ -98,13 +98,25 @@ def figure_for(settings, identifier, filters, stage, _api):
                 if match: trace.hovertemplate += f"<br>Rank: {match['rank']}<br>Similarity: {match['final_score']:.4f}"
                 trace.hovertemplate += '<extra></extra>'
                 trace.hovertext = None
+        # Plotly's WebGL selection can drop text when a point is toggled
+        # off. Keep ranks in non-interactive SVG annotations on the same
+        # coordinates; the underlying fill remains the clickable point.
+        marker_traces = []
         for trace in fig.data:
-            selection_style=dict(marker=dict(opacity=1))
-            if 'text' in (trace.mode or '') and trace.textfont.color:
-                tone=trace.textfont.color
-                if isinstance(tone,(list,tuple)):tone=tone[0]
-                selection_style['textfont']=dict(color=tone)
-            trace.update(selected=selection_style,unselected=selection_style)
+            if trace.mode == 'text':
+                font = trace.textfont
+                fig.add_annotation(
+                    x=float(trace.x[0]), y=float(trace.y[0]),
+                    text=f"<b>{trace.text[0]}</b>", name="prism-rank-"+str(trace.text[0]),
+                    showarrow=False, captureevents=False, borderpad=0,
+                    xanchor='center', yanchor='middle',
+                    font=dict(family=font.family, size=font.size, color=font.color[0]),
+                )
+            else:
+                marker_traces.append(trace)
+                neutral = dict(marker=dict(opacity=1))
+                trace.update(selected=neutral, unselected=neutral)
+        fig.data = tuple(marker_traces)
         fig.update_layout(clickmode='event+select' if NATIVE_POINTS else 'event',selectionrevision=str(identifier))
     # Preserve equal coordinate scale; let ranges expand, never shrink the plot domain.
     fig.update_layout(height=520,autosize=True,margin=dict(l=12,r=12,t=16,b=16),
@@ -125,7 +137,8 @@ def point_identifier(event):
 
 
 def select_detail(identifier):
-    st.session_state.integration_detail=identifier
+    if identifier != st.session_state.get("integration_detail"):
+        st.session_state.integration_detail = identifier
 
 
 def capture_map(key, permitted):
@@ -217,8 +230,8 @@ def filters_ui(api,settings,view):
         st.button(f'{title} `{summary}`', type='tertiary', key='ui_filter_toggle',
                   width='stretch', on_click=toggle_filter)
         if opened:
-            st.markdown('<div class="ui-filter-divider"></div>',unsafe_allow_html=True)
-            filter_editor(api,groups)
+            with st.container(key='ui_filter_body', gap=None):
+                filter_editor(api, groups)
     return filters,count
 
 
@@ -265,8 +278,8 @@ def _render_integrated(api):
     figure_version=STAGE+api.MAP_LOGIC_VERSION+api.RECOMMENDATION_LOGIC_VERSION
     base_figure=figure_for(settings,identifier,filters,figure_version,api)
     if search_ids:
-        matches = api.get_coordinates(search_ids, display['view'])
-        base_figure = search_matches_figure(base_figure, matches)
+        matches = api.get_coordinates([i for i in search_ids if i != detail], display['view'])
+        base_figure = search_matches_figure(base_figure, matches, show_label=len(search_ids) == 1)
     fig=overlay_figure(base_figure,detail,identifier,display['view'],results)
     permitted={identifier,*(r['id'] for r in results)} if identifier else None
     left,right = st.columns([3,2],gap='medium')
@@ -282,8 +295,9 @@ def _render_integrated(api):
         if filters: st.caption('필터는 배경 분포에 적용됩니다. 기준 향수와 추천 Top 10은 비교를 위해 유지합니다.')
     with right:
         if results:
-            st.subheader('추천 Top 10')
-            st.caption('기준: '+str(catalog.set_index('_id').loc[identifier,'Name']))
+            with st.container(key='ui_recommendation_heading', gap=None):
+                st.subheader('추천 Top 10')
+                st.caption('기준: '+str(catalog.set_index('_id').loc[identifier,'Name']))
             recommendation_rows(results,catalog,detail,api,select_detail)
         elif not detail:
             st.caption('향수를 검색하고 기준 향수를 선택하면 추천 Top 10이 표시됩니다.')

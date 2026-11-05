@@ -84,7 +84,7 @@ def markdown_text(value):
 
 def recommendation_rows(results,catalog,selected,api,select):
     lookup=catalog.set_index('_id')
-    with st.container(height=520,border=False,key='ui_rows'):
+    with st.container(height=338,border=False,key='ui_rows'):
         for result in results:
             row=lookup.loc[result['id']]
             label=f"![bottle]({image_source(row,api)}) **{result['rank']}. {markdown_text(result['name'])}**  \n{markdown_text(result['brand'])} **{result['final_score']:.4f}**"
@@ -124,7 +124,7 @@ def add_search_halo(figure, locations):
     ))
 
 
-def search_matches_figure(base, locations):
+def search_matches_figure(base, locations, *, show_label):
     if locations.empty:
         return base
     figure = shallow_figure(base)
@@ -138,7 +138,7 @@ def search_matches_figure(base, locations):
         selected=dict(marker=dict(opacity=1)), unselected=dict(marker=dict(opacity=1)),
         showlegend=False,
     ))
-    if len(locations) == 1:
+    if show_label and len(locations) == 1:
         row = locations.iloc[0]
         figure.add_annotation(
             x=row.scent_map_x, y=row.scent_map_y, text=escape(str(row['Name'])),
@@ -160,10 +160,15 @@ def overlay_figure(base,identifier,reference,view,results):
             x,y=float(trace.x[0]),float(trace.y[0]);break
     match=next((r for r in results if r['id']==identifier),None)
     if match:
-        figure.add_trace(go.Scattergl(x=[x],y=[y],mode='markers',marker=dict(symbol='circle-open',size=recommendation_marker_size(match['rank'])+6,color='#6E7BC9',line=dict(width=2)),hoverinfo='skip',showlegend=False))
+        radius = (recommendation_marker_size(match['rank']) + 6) / 2
+        figure.add_shape(
+            type='circle', xref='x', yref='y', xsizemode='pixel', ysizemode='pixel',
+            xanchor=x, yanchor=y, x0=-radius, x1=radius, y0=-radius, y1=radius,
+            line=dict(width=2, color='#6E7BC9'), layer='above', name='prism-selection-ring',
+        )
     elif identifier!=reference:
         for diameter,color,width in [(13,'#2c2c2a',1.5),(10,'#ffffff',1)]:
-            figure.add_trace(go.Scattergl(x=[x],y=[y],mode='markers',marker=dict(symbol='circle-open',size=diameter,color=color,line=dict(width=width)),hoverinfo='skip',showlegend=False))
+            figure.add_trace(go.Scattergl(x=[x],y=[y],mode='markers',marker=dict(symbol='circle-open',size=diameter,color=color,line=dict(width=width)),customdata=[[identifier]],hoverinfo='skip',showlegend=False))
         name='<br>'.join(escape(v) for v in textwrap.wrap(str(row['Name']),32)[:2])
         figure.add_annotation(x=x,y=y,text=name,showarrow=False,xshift=12,yshift=10,xanchor='left',bgcolor='rgba(255,255,255,.88)',borderpad=3,font=dict(size=12,family='Georgia',color='#2c2c2a'))
     return figure
@@ -204,6 +209,11 @@ def scoped_styles():
     st.html('''<style>
     .st-key-prism_unified .st-key-ui_rows,.st-key-prism_unified .st-key-ui_rows [data-testid="stVerticalBlock"]{gap:6px}
     .st-key-prism_unified .st-key-ui_rows{padding:4px 2px}
+    @media(max-height:760px){
+        .st-key-prism_unified [data-testid="stLayoutWrapper"]:has(> .st-key-ui_rows){height:284px!important;flex:0 0 284px!important}
+    }
+    .st-key-prism_unified .st-key-ui_recommendation_heading h3{padding-top:0;padding-bottom:9px}
+    .st-key-prism_unified .st-key-ui_recommendation_heading p{margin:0}
     .st-key-prism_unified .st-key-ui_rows button{position:relative;min-height:58px;justify-content:flex-start;text-align:left;border:1px solid #e8e7ed;border-radius:9px;background:white;padding:6px 64px 6px 10px}
     .st-key-prism_unified .st-key-ui_rows button[kind="primary"]{background:#eeedf9;border-color:#a9add8}
     .st-key-prism_unified .st-key-ui_rows button>div,.st-key-prism_unified .st-key-ui_rows button [data-has-shortcut]{width:100%;min-width:0;justify-content:flex-start}
@@ -218,8 +228,7 @@ def scoped_styles():
     .st-key-prism_unified .st-key-ui_close button{font-size:18px;color:#6c6975;min-height:25px;padding:0 6px;background:transparent;border:0}
     .st-key-prism_unified .prism-detail-badges span{background:#e9e7f8;color:#4e5896;border-radius:14px;padding:4px 8px;font-size:12px;display:inline-block;margin:2px 2px 0 0}
     .st-key-prism_unified{gap:18px}
-    .st-key-prism_unified .st-key-ui_filter_shell{border:1px solid #e2e1e8;border-radius:12px;background:white;gap:8px}
-    .st-key-prism_unified .st-key-ui_filter_shell> :not(.st-key-ui_filter_toggle){margin-inline:14px;width:calc(100% - 28px)}
+    .st-key-prism_unified .st-key-ui_filter_shell{border:1px solid #e2e1e8;border-radius:12px;background:white;gap:0}
     .st-key-prism_unified .st-key-ui_filter_actions{gap:8px;align-items:center}
     .st-key-prism_unified .st-key-ui_filter_hint{margin-left:auto}
     .st-key-prism_unified .st-key-ui_filter_toggle button{border:0;border-radius:11px;background:white;font-weight:bold;min-height:44px;padding:8px 14px}
@@ -234,7 +243,9 @@ def scoped_styles():
     @media(max-width:639px){
         .st-key-prism_unified .st-key-ui_filter_toggle code{flex-basis:100%;margin-left:0}
     }
-    .st-key-prism_unified .ui-filter-divider{height:1px;background:#ebeaf0}
+    .st-key-prism_unified .st-key-ui_filter_shell:has(.st-key-ui_filter_body) .st-key-ui_filter_toggle button{border-radius:11px 11px 0 0}
+    .st-key-prism_unified .st-key-ui_filter_body{border-top:1px solid #ebeaf0;padding:14px}
+    .st-key-prism_unified .st-key-ui_filter_body [data-testid="stVerticalBlock"]:has(> [data-testid="stLayoutWrapper"] > .st-key-ui_filter_actions){gap:12px}
     .st-key-prism_unified .st-key-ui_filter_actions button{min-height:34px;padding:4px 12px;font-size:14px}
     .st-key-prism_unified .st-key-ui_filter_grid [data-testid="stHorizontalBlock"]{align-items:stretch}
     .st-key-prism_unified .st-key-ui_filter_grid [data-testid="stColumn"]>div{height:100%}

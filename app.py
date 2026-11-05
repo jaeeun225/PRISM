@@ -399,9 +399,9 @@ def render_navigation() -> None:
         f"{nav_button}[kind='primary'], {nav_button}:hover {{color:#000!important;}}"
         f"{nav_button}[kind='primary'] p {{font-weight:800!important;}}"
         f"{nav_button}:focus-visible {{outline:1px solid currentColor!important;outline-offset:3px;}}"
-        f"{logo_button} {{color:#000!important;margin-bottom:1.4rem;}}"
+        f"{logo_button} {{color:#000!important;margin-bottom:0.4rem;}}"
         f"{logo_button} p {{font-size:36px!important;font-weight:700!important;letter-spacing:0.02em;}}"
-        f"{menu_list} {{position:relative;display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;justify-content:center;align-items:center;gap:0.5rem 2.5rem!important;margin-bottom:1rem;width:100%!important;box-sizing:border-box;}}"
+        f"{menu_list} {{position:relative;display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;justify-content:center;align-items:center;gap:0.5rem 2.5rem!important;margin-bottom:0.5rem;width:100%!important;box-sizing:border-box;}}"
         f"{menu_list}::after {{content:'';position:absolute;left:50%;margin-left:-50vw;bottom:0;width:100vw;height:1px;background:#D0D0D0;pointer-events:none;}}"
         f"{menu_list} > div, {menu_list} [data-testid='stButton'] {{width:max-content!important;max-width:100%;flex:0 0 auto!important;}}"
         f"{menu_list} > div:has(.prism-menu-list) {{display:none!important;}}"
@@ -436,6 +436,8 @@ def main() -> None:
     # reruns do not briefly reveal the native selected capsules.
     st.html(
         "<style id='prism-native-chip-visibility'>"
+        "[data-testid='stHeader'], [data-testid='stToolbar'], [data-testid='stDecoration'] {display:none!important;}"
+        "[data-testid='stMainBlockContainer'] {padding-top:0.75rem;}"
         "[data-baseweb='tag'], [data-testid='stMultiSelectTag'] "
         "{display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;background:#6E7BC9!important;color:#FFFFFF!important;border:1px solid #5967B5!important;border-radius:999px!important;padding:0.2rem 0.7rem!important;font-family:Georgia,'Times New Roman',serif!important;}"
         "[data-baseweb='tag'] *, [data-testid='stMultiSelectTag'] * {font-family:Georgia,'Times New Roman',serif!important;color:#FFFFFF!important;}"

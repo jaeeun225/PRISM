@@ -189,6 +189,13 @@ def add_rank_ring(figure, rank, x, y):
 
 def show_rank_ring(figure, rank):
     if rank is None:
+        ring_indices = ','.join(f'[data-index="{index}"]'
+                                for index, shape in enumerate(figure.layout.shapes)
+                                if (shape.name or '').startswith('prism-selection-ring-'))
+        if ring_indices:
+            st.html(f'<style>.st-key-ui_recommendation_chart '
+                    f'.layer-above .shape-group:is({ring_indices}) > path'
+                    '{stroke-opacity:0!important}</style>')
         return
     for index, shape in enumerate(figure.layout.shapes):
         if shape.name == f'prism-selection-ring-{rank}':
@@ -228,6 +235,37 @@ export default function({data, parentElement, setTriggerValue}) {
         const matches = button => endpoints.every(key => changes[key] === button.args[0][key]);
         graph[atRecommendation] = matches(recommended);
         graph.dataset.prismView = graph[atRecommendation] ? 'recommended' : matches(full) ? 'full' : 'custom';
+        syncRankLabels();
+    }
+
+    function syncRankLabels() {
+        const labels = [];
+        for (const group of graph.querySelectorAll('.annotation[data-index]')) {
+            const annotation = graph.layout.annotations?.[Number(group.dataset.index)];
+            if (!annotation?.name?.startsWith('prism-rank-')) continue;
+            const text = group.querySelector('text');
+            if (!text) continue;
+            const rank = Number(annotation.name.slice('prism-rank-'.length));
+            const outline = graph.data.find(trace => trace.name === 'Recommendation outline' &&
+                trace.x[0] === annotation.x && trace.y[0] === annotation.y);
+            if (!outline) continue;
+            labels.push({rank, text, radius: Number(outline.marker.size) / 2,
+                bounds: text.getBoundingClientRect()});
+        }
+        const fullView = graph.dataset.prismView === 'full';
+        for (const label of labels) {
+            const a = label.bounds;
+            // Annotations sit above WebGL. Hide a lower glyph when a higher
+            // marker covers it, so the glyph cannot leak through the stack.
+            const covered = fullView && labels.some(({rank, bounds: b, radius}) => {
+                if (rank >= label.rank || !b.width) return false;
+                const x = b.left + b.width / 2;
+                const y = b.top + b.height / 2;
+                return Math.hypot(Math.max(a.left - x, x - a.right, 0),
+                                  Math.max(a.top - y, y - a.bottom, 0)) < radius;
+            });
+            label.text.style.visibility = covered ? 'hidden' : '';
+        }
     }
 
     function resetRecommendation() {
@@ -245,17 +283,23 @@ export default function({data, parentElement, setTriggerValue}) {
             event.stopImmediatePropagation();
         }
     }
-    let press;
+    // The component can be reinitialized between pointerdown and pointerup.
+    // Keep the press on the chart, and only consume it for the same plot.
+    const pressSlot = Symbol.for('prism.recommendation.press');
     function start(event) {
-        press = event.button === 0 && event.target.closest('.nsewdrag')
-            ? {id: event.pointerId, x: event.clientX, y: event.clientY}
-            : undefined;
+        if (event.button === 0 && event.target.closest('.nsewdrag')) {
+            host[pressSlot] = {graph, id: event.pointerId, x: event.clientX, y: event.clientY};
+        }
+    }
+    function cancelPress(event) {
+        if (host[pressSlot]?.id === event.pointerId) delete host[pressSlot];
     }
     function finish(event) {
+        const press = host[pressSlot];
         if (!press || event.pointerId !== press.id) return;
+        delete host[pressSlot];
         const distance = Math.hypot(event.clientX - press.x, event.clientY - press.y);
-        press = undefined;
-        if (distance > 5 || !graph?.isConnected) {
+        if (press.graph !== graph || distance > 5 || !graph?.isConnected) {
             delete host[previousClick];
             return;
         }
@@ -271,7 +315,11 @@ export default function({data, parentElement, setTriggerValue}) {
             mouseY < 0 || mouseY > layout.yaxis._length) return;
         let nearest;
         let bestDistance = Infinity;
-        for (const [index, trace] of graph.data.entries()) {
+        const fullView = graph.dataset.prismView === 'full';
+        // In full view use the same front-to-back order as the rendered stacks.
+        const traces = [...graph.data.entries()];
+        if (fullView) traces.reverse();
+        for (const [index, trace] of traces) {
             const customdata = trace.customdata?.[0];
             if (trace.hoverinfo === 'skip' || typeof customdata?.at(-1) !== 'string') continue;
             const x = trace.x[0];
@@ -281,6 +329,7 @@ export default function({data, parentElement, setTriggerValue}) {
             if (delta <= size / 2 + 2 && delta <= bestDistance) {
                 nearest = {customdata, curve_number: index, x, y};
                 bestDistance = delta;
+                if (fullView) break;
             }
         }
         const id = nearest?.customdata.at(-1);
@@ -303,7 +352,9 @@ export default function({data, parentElement, setTriggerValue}) {
         graph?.removeEventListener('pointerdown', start, true);
         graph?.removeEventListener('click', resetFromToolbar, true);
         graph?.removeListener('plotly_relayout', trackRange);
+        graph?.removeListener('plotly_afterplot', syncRankLabels);
         document.removeEventListener('pointerup', finish, true);
+        document.removeEventListener('pointercancel', cancelPress, true);
     }
     function attach() {
         const next = host.querySelector('[data-testid="stPlotlyChart"] .js-plotly-plot');
@@ -313,9 +364,12 @@ export default function({data, parentElement, setTriggerValue}) {
         graph[atRecommendation] ??= true;
         graph.dataset.prismView ??= 'recommended';
         graph.on('plotly_relayout', trackRange);
+        graph.on('plotly_afterplot', syncRankLabels);
+        syncRankLabels();
         graph.addEventListener('pointerdown', start, true);
         graph.addEventListener('click', resetFromToolbar, true);
         document.addEventListener('pointerup', finish, true);
+        document.addEventListener('pointercancel', cancelPress, true);
     }
     const selectionSlot = Symbol.for('prism.recommendation.scrolledSelection');
     function revealSelection() {
@@ -448,6 +502,13 @@ def scoped_styles():
     .st-key-ui_recommendation_chart .ui-map-tooltip{display:none;position:absolute;left:-14px;top:calc(100% + 7px);width:max-content;max-width:300px;grid-template-columns:auto auto;gap:5px 16px;word-break:keep-all;border-radius:10px;padding:12px 14px;background:#302e38;color:#fff;font-size:14px;line-height:1.4;box-shadow:0 6px 18px rgba(0,0,0,.18);pointer-events:none}
     .st-key-ui_recommendation_chart .ui-map-tooltip::before{content:'';position:absolute;left:19px;top:-7px;border-inline:4px solid transparent;border-bottom:8px solid #302e38}
     .st-key-ui_recommendation_chart .ui-map-tooltip b{font-weight:600}
+    :root:has(.st-key-ui_filter_grid [data-testid="stTooltipHoverTarget"]:hover,
+              .st-key-ui_filter_grid [data-testid="stTooltipHoverTarget"] button:focus-visible)
+      [role="tooltip"] > [data-testid="stTooltipContent"]{
+        background:color-mix(in srgb,var(--prism-accord-tooltip-ink) 14%,white);
+        border:1px solid color-mix(in srgb,var(--prism-accord-tooltip-ink) 40%,white);
+        color:#302e38;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.18);
+    }
     .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus) .ui-map-tooltip{display:grid}
     @media(max-width:700px){.st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:16px}}
     .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"]{margin-bottom:5px;min-height:0}

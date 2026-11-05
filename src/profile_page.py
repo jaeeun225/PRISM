@@ -217,7 +217,7 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
             st.caption('최대 3개')
             if values:
                 address = urlsplit(st.context.url or '')
-                query_string = urlencode([(key, value) for key in st.query_params
+                query_string = urlencode([(key, value) for key in st.query_params if key != 'logo'
                                           for value in st.query_params.get_all(key)])
                 st.caption('프로필 저장 URL:')
                 st.code(urlunsplit((address.scheme, address.netloc, address.path, query_string, '')),

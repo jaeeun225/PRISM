@@ -221,7 +221,11 @@ def filter_editor(api,groups):
     css=[]
     for i,(section,_) in enumerate(groups):
         ink,pale=section_colors(section,api)
-        css.append(f'.st-key-prism_unified .st-key-ui_section_{i}{{--section-ink:{ink};--section-pale:{pale}}}')
+        section_class = f'.st-key-prism_unified .st-key-ui_section_{i}'
+        css.append(f'{section_class}{{--section-ink:{ink};--section-pale:{pale}}}')
+        trigger = f'{section_class} [class*="st-key-ui_chip_"] [data-testid="stTooltipHoverTarget"]'
+        css.append(f':root:has({trigger}:hover, {trigger} button:focus-visible)'
+                   f'{{--prism-accord-tooltip-ink:{ink}}}')
     st.html('<style>'+''.join(css)+'</style>')
     with st.container(key='ui_filter_grid'):
         # The dense Soft Amber group gets two grid units; remaining rows use four.

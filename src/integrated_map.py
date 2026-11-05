@@ -21,7 +21,8 @@ def reset_search():
 
 
 @st.cache_data(show_spinner=False, max_entries=64)
-def ranked(settings, identifier, _api):
+def ranked(settings, identifier, _api, recommendation_logic=""):
+    # Include changed matrix logic in the ranking cache key.
     catalog, accords, notes = _api.get_recommendation_cache(settings, _api.RECOMMENDATION_LOGIC_VERSION)
     return _api.recommend(identifier, catalog, accords, notes)
 
@@ -45,7 +46,7 @@ def figure_for(settings, identifier, filters, stage, _api, detail=None):
     visible = view.loc[view.accord_values.map(lambda values: bool(set(filters).intersection(values)))] if filters else view
     full = _api.fast_figure(visible, original['template'], '') if filters else original['full_figure']
     cached = dict(original, full_figure=full)
-    results = ranked(settings, identifier, _api) if identifier else []
+    results = ranked(settings, identifier, _api, _api.RECOMMENDATION_LOGIC_VERSION) if identifier else []
     if identifier:
         fig, _ = _api.recommendation_figure(cached, results)
         recommendation_end=len(fig.data)
@@ -257,12 +258,13 @@ def render_integrated(api):
         else:
             st.caption('일치하는 향수가 없습니다.')
     filters = filters_ui(api)
-    results = ranked(settings,identifier,api) if identifier else []
+    results = ranked(settings,identifier,api,api.RECOMMENDATION_LOGIC_VERSION) if identifier else []
     detail=st.session_state.get('integration_detail')
-    fig = figure_for(settings,identifier,filters,STAGE,api,detail=detail)
+    figure_version=STAGE+api.MAP_LOGIC_VERSION+api.RECOMMENDATION_LOGIC_VERSION
+    fig = figure_for(settings,identifier,filters,figure_version,api,detail=detail)
     if detail and filters:
         # Keep the matching full view warm so clearing filters reuses it too.
-        figure_for(settings,identifier,(),STAGE,api,detail=detail)
+        figure_for(settings,identifier,(),figure_version,api,detail=detail)
     left,right = st.columns([3,2],gap='medium')
     with left:
         st.caption('마우스 휠: 확대·축소 · 드래그: 영역 확대 · 목록/검색 선택: 상세 정보 · 더블클릭: 전체 보기')

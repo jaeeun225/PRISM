@@ -62,7 +62,7 @@ def card_html(identifier,catalog,view,results,api):
     match=next((r for r in results if r['id']==identifier),None)
     badges=(f'추천 {match["rank"]}위</span> <span>유사도 {match["final_score"]:.4f}' if match else '선택한 향수')
     picture=escape(image_source(row,api),quote=True)
-    html = f'''<div class="prism-detail-card" style="background:{palette['background']};color:{palette['foreground']};border-color:{edge}">
+    html = f'''<div class="prism-detail-card" data-perfume-id="{escape(str(identifier), quote=True)}" style="background:{palette['background']};color:{palette['foreground']};border-color:{edge}">
     <div class="prism-detail-top">
     <div class="prism-detail-image" style="border-color:{color}"><img src="{picture}" alt=""></div>
     <div class="prism-detail-summary">
@@ -104,7 +104,7 @@ def recommendation_rows(results,catalog,selected,api,select):
     with st.container(height=224,border=False,key='ui_rows'):
         for result in results:
             row=lookup.loc[result['id']]
-            label=f"![bottle]({image_source(row,api)}) **`{result['rank']}.` {markdown_text(result['name'])}**  \n{markdown_text(result['brand'])} **{result['final_score']:.4f}**"
+            label=f"![bottle]({image_source(row,api)}) **`{result['rank']}.` *{markdown_text(result['name'])}***  \n*{markdown_text(result['brand'])}* **{result['final_score']:.4f}**"
             st.button(label,key='ui_rec_'+result['id'],width='stretch',
                       type='primary' if selected==result['id'] else 'secondary',
                       on_click=select,args=(result['id'],))
@@ -235,7 +235,6 @@ export default function({data, parentElement, setTriggerValue}) {
     const slot = Symbol.for('prism.recommendation.clicks');
     host[slot]?.();
     let graph;
-    let pending = data.selected;
     // Keep click cadence across component updates caused by opening a card.
     const previousClick = Symbol.for('prism.recommendation.lastClick');
     const atRecommendation = Symbol.for('prism.recommendation.initialRange');
@@ -300,8 +299,8 @@ export default function({data, parentElement, setTriggerValue}) {
             return;
         }
         host[previousClick] = {graph, id, time: now, x: mouseX, y: mouseY};
-        if (!id || id === pending) return;
-        pending = id;
+        const card = host.closest('.st-key-prism_unified')?.querySelector('.prism-detail-card');
+        if (!id || (id === card?.dataset.perfumeId && !card.closest('[data-stale="true"]'))) return;
         setTriggerValue('point', nearest);
     }
     function markerAt(clientX, clientY) {
@@ -348,7 +347,7 @@ export default function({data, parentElement, setTriggerValue}) {
         graph?.removeEventListener('mousemove', updateHover, true);
         graph?.removeEventListener('mouseleave', updateHover);
         graph?.removeEventListener('click', resetFromToolbar, true);
-        graph?.removeListener('plotly_relayout', trackRange);
+        graph?.removeListener?.('plotly_relayout', trackRange);
         document.removeEventListener('pointerup', finish, true);
         document.removeEventListener('pointercancel', cancelPress, true);
     }
@@ -372,9 +371,9 @@ export default function({data, parentElement, setTriggerValue}) {
         const list = host.closest('.st-key-prism_unified')?.querySelector('.st-key-ui_rows');
         const buttons = list?.querySelectorAll('button');
         for (const row of buttons ?? []) {
-            const heading = row.querySelector('strong:first-of-type');
+            const heading = row.querySelector('strong:first-of-type > em');
             if (!heading || heading.title) continue;
-            heading.title = heading.textContent.replace(/^\s*\d+\.\s*/, '').trim();
+            heading.title = heading.textContent.trim();
         }
         const button = buttons?.[data.rank - 1];
         if (host[selectionSlot] === data.selected && data.selected) return;
@@ -476,7 +475,10 @@ def scoped_styles():
     .st-key-prism_unified .st-key-ui_rows button p{font-size:12px!important;color:#777484;text-align:left!important;width:100%;position:relative;padding-left:44px;min-height:0;margin:0!important;line-height:15px;white-space:nowrap;overflow-wrap:normal}
     .st-key-prism_unified .st-key-ui_rows button img{height:36px!important;max-height:36px!important;width:34px!important;max-width:34px!important;object-fit:contain;position:absolute;left:0;top:0;background:white}
     .st-key-prism_unified .st-key-ui_rows button br{display:none}
-    .st-key-prism_unified .st-key-ui_rows button strong:first-of-type{font-size:14px;color:#302e38;display:block;line-height:18px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;margin-bottom:1px}
+    .st-key-prism_unified .st-key-ui_rows button strong:first-of-type{font-size:14px;color:#302e38;display:flex;align-items:baseline;gap:4px;min-width:0;line-height:18px;margin-bottom:1px}
+    .st-key-prism_unified .st-key-ui_rows button strong:first-of-type > code{flex:none}
+    .st-key-prism_unified .st-key-ui_rows button strong:first-of-type > em{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:normal}
+    .st-key-prism_unified .st-key-ui_rows button p > em{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:normal;line-height:15px}
     .st-key-prism_unified .st-key-ui_rows button strong:last-of-type{position:absolute;right:-54px;top:50%;transform:translateY(-50%);font-size:14px;color:#514d60}
     .st-key-prism_unified .st-key-ui_detail{position:relative}
     .st-key-prism_unified .st-key-ui_close{position:absolute;right:10px;top:6px;z-index:3;width:28px}
@@ -533,6 +535,19 @@ def scoped_styles():
     .st-key-ui_filter_grid [class*="st-key-ui_chip_"]:has(button:hover){z-index:31}
     .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus) .ui-map-tooltip{display:grid}
     @media(max-width:700px){.st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:16px}}
+    .st-key-integration_search_box{position:relative}
+    .st-key-integration_search_box .st-key-integration_clear{position:absolute;right:8px;bottom:4.4px;width:26px;z-index:2}
+    .st-key-integration_search_box:not(:has(input:not(:placeholder-shown))) .st-key-integration_clear{display:none}
+    .st-key-integration_search_box input{padding-right:38px}
+    .st-key-integration_search_box .st-key-integration_clear button{
+        width:26px;height:26px;min-height:26px;padding:0;border:0;background:transparent;color:rgba(49,51,63,.6);box-shadow:none
+    }
+    .st-key-integration_search_box .st-key-integration_clear button:hover{color:rgba(49,51,63,.85)}
+    .st-key-integration_search_box .st-key-integration_clear button p{position:absolute;clip-path:inset(50%)}
+    .st-key-integration_search_box .st-key-integration_clear button::before{
+        content:'';position:absolute;inset:50% auto auto 50%;translate:-50% -50%;width:16px;height:16px;background:currentColor;
+        mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm4.29 12.89a.996.996 0 11-1.41 1.41L12 13.41 9.11 16.3a.996.996 0 11-1.41-1.41L10.59 12 7.71 9.11A.996.996 0 119.12 7.7L12 10.59l2.89-2.89a.996.996 0 111.41 1.41L13.41 12l2.88 2.89z'/%3E%3C/svg%3E") center/contain no-repeat
+    }
     .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"]{margin-bottom:5px;min-height:0}
     .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"] p{font-size:16px;font-weight:600;color:#302e38;line-height:1.25}
     .st-key-prism_unified :is(.ui-rec-title h3,.st-key-ui_rows button strong,.prism-detail-badges span,.st-key-ui_filter_toggle code){font-variant-numeric:lining-nums tabular-nums}

@@ -25,6 +25,23 @@ def reset_search():
     clear_details()
 
 
+def reset_map(*, reset_filters=False):
+    """Reset the map from a navigation or clear-button callback."""
+    st.session_state.integration_search = ''
+    st.session_state.integration_route_ready = True
+    reset_search()
+    if 'prism_scent' in st.query_params:
+        del st.query_params['prism_scent']
+        # Retain the saved signatures in this session when leaving the profile.
+        st.session_state._profile_url_values = ()
+    if reset_filters:
+        st.session_state.integration_active = []
+        st.session_state.ui_filter_open = False
+        for key in list(st.session_state):
+            if key.startswith('integration_draft_'):
+                del st.session_state[key]
+
+
 @st.cache_data(show_spinner=False, max_entries=64)
 def ranked(settings, identifier, _api, recommendation_logic=""):
     # Include changed matrix logic in the ranking cache key.
@@ -283,17 +300,32 @@ def render_integrated(api):
 
 
 def _render_integrated(api):
-    detail=st.session_state.get("integration_detail")
-    search_column,selection_column=st.columns([3,2],gap="medium")
-    with search_column:
-        query = st.text_input('향수 이름 또는 브랜드 검색',key='integration_search',on_change=reset_search)
+    detail = st.session_state.get('integration_detail')
+    bookmark_ids = () if st.session_state.get('integration_route_ready') else st.query_params.get_all('prism_scent')
+    catalog = None
     try:
         settings = tuple(sorted(api.data_settings().items()))
+        if bookmark_ids:
+            with st.spinner('지도를 불러오는 중…'):
+                catalog = api.get_recommendation_cache(settings, api.RECOMMENDATION_LOGIC_VERSION)[0]
+            indexed = catalog.set_index('_id')
+            identifier = next((value for value in bookmark_ids if value in indexed.index), None)
+            if identifier is not None:
+                st.session_state.integration_search = str(indexed.at[identifier, 'Name'])
+                st.session_state.integration_base = identifier
+        st.session_state.integration_route_ready = True
+        search_column, selection_column = st.columns([3, 2], gap='medium')
+        with search_column, st.container(key='integration_search_box', gap=None):
+            query = st.text_input('향수 이름 또는 브랜드 검색', key='integration_search',
+                                  placeholder=' ', on_change=reset_search)
+            st.button('검색어 지우기', key='integration_clear', on_click=reset_map)
         with st.spinner('지도를 불러오는 중…'):
-            display=api.get_display_cache(settings,api.MAP_LOGIC_VERSION)
-            catalog = api.get_recommendation_cache(settings,api.RECOMMENDATION_LOGIC_VERSION)[0] if query.strip() or detail else None
+            display = api.get_display_cache(settings, api.MAP_LOGIC_VERSION)
+            if catalog is None and (query.strip() or detail):
+                catalog = api.get_recommendation_cache(settings, api.RECOMMENDATION_LOGIC_VERSION)[0]
     except api.DataLoadError as exc:
-        st.error(str(exc)); return
+        st.error(str(exc))
+        return
     identifier = None
     search_ids = ()
     if query.strip():

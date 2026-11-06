@@ -374,8 +374,11 @@ def render_accord_chips(selected: list[str]) -> None:
     st.markdown("<style>" + "".join(rules) + "</style>", unsafe_allow_html=True)
 
 
-def navigate(page: str) -> None:
+def navigate(page: str, *, home: bool = False) -> None:
     previous = st.session_state.get('current_page')
+    if page == 'scent_map' and (home or previous == 'profile'):
+        from src.integrated_map import reset_map
+        reset_map(reset_filters=True)
     st.session_state.current_page = page
     if page == 'profile' or previous == 'profile':
         from src.profile_state import set_profile_route
@@ -426,13 +429,62 @@ def render_navigation() -> None:
     with st.container(key="prism_nav", horizontal=True, horizontal_alignment="distribute",
                       vertical_alignment="center"):
         st.button("PRISM", key="nav_home", width="content",
-                  on_click=navigate, args=("scent_map",))
+                  on_click=navigate, args=("scent_map",), kwargs={"home": True})
         with st.container(key="prism_nav_tabs", width="content", horizontal=True,
                           horizontal_alignment="right"):
             for page, label in [("scent_map", "Interactive Scent Map"), ("profile", "My Profile")]:
                 st.button(label, key=f"nav_{page}", width="content",
                           type="primary" if st.session_state.current_page == page else "secondary",
                           on_click=navigate, args=(page,))
+
+
+def install_page_transition_guard() -> None:
+    st.html("""
+        <style>
+        [data-testid="stElementContainer"]:has(#prism-transition-hook){display:none}
+        :root[data-prism-transition="profile"] .st-key-prism_page_map,
+        :root[data-prism-transition="map"] .st-key-prism_page_profile,
+        :root:not([data-prism-transition]):has(.st-key-nav_profile button[kind="primary"]) .st-key-prism_page_map,
+        :root:not([data-prism-transition]):has(.st-key-nav_scent_map button[kind="primary"]) .st-key-prism_page_profile{
+            display:none!important
+        }
+        </style>
+        <span id="prism-transition-hook" hidden></span>
+        <script>
+        (() => {
+            const installed = Symbol.for('prism.navigation.transition');
+            if (document[installed]) return;
+            document[installed] = true;
+            const root = document.documentElement;
+            const map = '.st-key-nav_scent_map button[kind="primary"]';
+            const profile = '.st-key-nav_profile button[kind="primary"]';
+            document.addEventListener('click', event => {
+                const button = event.target.closest('button');
+                if (button?.closest('.st-key-nav_profile') && document.querySelector(map)) {
+                    root.dataset.prismTransition = 'profile';
+                } else if (button?.closest('.st-key-nav_home,.st-key-nav_scent_map') &&
+                           document.querySelector(profile)) {
+                    root.dataset.prismTransition = 'map';
+                }
+            }, true);
+            const sync = () => {
+                const target = root.dataset.prismTransition;
+                if ((target === 'map' && document.querySelector(map)) ||
+                    (target === 'profile' && document.querySelector(profile))) {
+                    delete root.dataset.prismTransition;
+                }
+                const clear = document.querySelector('.st-key-integration_clear button');
+                if (clear && clear.getAttribute('aria-label') !== '검색어 지우기') {
+                    clear.setAttribute('aria-label', '검색어 지우기');
+                }
+            };
+            new MutationObserver(sync).observe(document.body, {
+                subtree:true, childList:true, attributes:true, attributeFilter:['kind','aria-label']
+            });
+            sync();
+        })();
+        </script>
+    """, unsafe_allow_javascript=True)
 
 
 def main() -> None:
@@ -455,22 +507,25 @@ def main() -> None:
     restore_route()
     if st.session_state.current_page in ("home", "recommendation"):
         st.session_state.current_page = "scent_map"
+    install_page_transition_guard()
     render_navigation()
     if st.session_state.current_page in ("scent_map", "recommendation"):
         import sys
         from src.integrated_map import render_integrated
-        render_integrated(sys.modules[__name__])
+        with st.container(key="prism_page_map"):
+            render_integrated(sys.modules[__name__])
     elif st.session_state.current_page == "profile":
         from src.profile_page import render_profile
-        render_profile(
-            settings_factory=data_settings,
-            recommendation_loader=get_recommendation_cache,
-            recommendation_logic=RECOMMENDATION_LOGIC_VERSION,
-            map_artifact_loader=load_map_artifact,
-            map_logic=MAP_LOGIC_VERSION,
-            map_fallback_loader=load_scent_map,
-            catalog_loader=get_catalog,
-        )
+        with st.container(key="prism_page_profile"):
+            render_profile(
+                settings_factory=data_settings,
+                recommendation_loader=get_recommendation_cache,
+                recommendation_logic=RECOMMENDATION_LOGIC_VERSION,
+                map_artifact_loader=load_map_artifact,
+                map_logic=MAP_LOGIC_VERSION,
+                map_fallback_loader=load_scent_map,
+                catalog_loader=get_catalog,
+            )
 
 
 @st.cache_data(ttl=86400, max_entries=2, show_spinner=False)

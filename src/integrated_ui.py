@@ -48,7 +48,7 @@ def accord_chip_style(section_class, accord, description):
 
 def accord_chip(accord, selected, toggle, section_index):
     st.button(accord, key='ui_chip_'+accord, type='primary' if selected else 'secondary',
-              on_click=toggle, args=(section_index, accord))
+              on_click=toggle, args=(section_index, accord), wrap=True)
 
 
 def card_html(identifier,catalog,view,results,api):

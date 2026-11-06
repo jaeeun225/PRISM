@@ -163,6 +163,11 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
     .st-key-profile_layout [data-testid="stColumn"]:has(.st-key-profile_controls){min-width:0}
     .st-key-profile_controls [data-testid="stVerticalBlock"],
     .st-key-profile_preview [data-testid="stVerticalBlock"]{gap:12px}
+    .st-key-profile_layout [data-testid="stLayoutWrapper"]:has(>
+        :is(.st-key-profile_search_results,.st-key-profile_selection_slot,.st-key-profile_url_slot,
+            .st-key-profile_orientation_slot,.st-key-profile_card_status)):not(:has([data-testid="stElementContainer"]:not(:has([data-testid="stEmpty"])))){
+        display:none
+    }
     .st-key-profile_controls h3{font-size:20px;font-weight:600;color:#302e38;line-height:1.3;padding:0}
     .st-key-profile_layout [data-testid="stWidgetLabel"] p{font-size:16px;font-weight:600;color:#302e38}
     .st-key-profile_layout [data-testid="stCaptionContainer"]{font-size:14px;font-weight:400;color:#6c6975}
@@ -208,46 +213,62 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
             metadata = (profile_label_metadata(settings_key, tuple(sorted(index['duplicate_ids'])))
                         if relevant & index['duplicate_ids'] else {})
             labels = disambiguate_labels(index, metadata) if metadata else index['labels']
-            if query.strip():
-                choices = matches
-                choices = choices.loc[~choices['_id'].isin(values)]
-                if matches.empty:
-                    st.caption('일치하는 향수가 없습니다.')
-                elif choices.empty:
-                    st.caption('검색 결과가 모두 이미 선택된 향수입니다.')
-                else:
-                    choice_ids = sorted_choices(index, choices['_id'])
-                    suffix = hashlib.sha256(query.strip().casefold().encode()).hexdigest()[:12]
-                    choice_key = f"profile_candidate_{suffix}_{st.session_state.get('profile_picker_generation', 0)}"
-                    candidate = st.selectbox('추가할 시그니처 향수', choice_ids, index=None,
-                                             format_func=labels.get, key=choice_key,
-                                             disabled=len(values) >= MAX_SIGNATURES)
-                    st.button('시그니처에 추가', key='profile_add', type='primary',
-                              disabled=candidate is None or len(values) >= MAX_SIGNATURES,
-                              on_click=add_signature, args=(choice_key, tuple(choice_ids)))
-            if values:
-                selected = catalog.set_index('_id').loc[values]
-                with st.container(horizontal=True, gap='small', key='profile_selected_chips'):
-                    for identifier in values:
-                        st.button(labels[identifier] + ' ×', key=f'profile_remove_{identifier}',
-                                  use_container_width=False, on_click=remove_signature, args=(identifier,))
-                st.button('↻ 처음부터 다시', key='profile_reset', on_click=reset_profile)
+            # Fixed siblings keep their Streamlit element paths as results and chips change.
+            with st.container(key='profile_search_results'):
+                if query.strip():
+                    choices = matches
+                    choices = choices.loc[~choices['_id'].isin(values)]
+                    if matches.empty:
+                        st.caption('일치하는 향수가 없습니다.')
+                    elif choices.empty:
+                        st.caption('검색 결과가 모두 이미 선택된 향수입니다.')
+                    else:
+                        choice_ids = sorted_choices(index, choices['_id'])
+                        suffix = hashlib.sha256(query.strip().casefold().encode()).hexdigest()[:12]
+                        choice_key = f"profile_candidate_{suffix}_{st.session_state.get('profile_picker_generation', 0)}"
+                        candidate = st.selectbox('추가할 시그니처 향수', choice_ids, index=None,
+                                                 format_func=labels.get, key=choice_key,
+                                                 disabled=len(values) >= MAX_SIGNATURES)
+                        st.button('시그니처에 추가', key='profile_add', type='primary',
+                                  disabled=candidate is None or len(values) >= MAX_SIGNATURES,
+                                  on_click=add_signature, args=(choice_key, tuple(choice_ids)))
+            with st.container(key='profile_selection_slot'):
+                if values:
+                    selected = catalog.set_index('_id').loc[values]
+                    with st.container(horizontal=True, gap='small', key='profile_selected_chips'):
+                        for identifier in values:
+                            st.button(labels[identifier] + ' ×', key=f'profile_remove_{identifier}',
+                                      use_container_width=False, on_click=remove_signature, args=(identifier,))
+                    st.button('↻ 처음부터 다시', key='profile_reset', on_click=reset_profile)
             st.caption('최대 3개')
-            if values:
+            url_slot = st.container(key='profile_url_slot')
+        with preview, st.container(key='profile_preview'):
+            with st.container(key='profile_orientation_slot'):
+                if values:
+                    layout = st.radio('카드 형태', ['가로형', '세로형'], horizontal=True, key='profile_orientation')
+            status_slot = st.container(key='profile_card_status', gap=None)
+            card_slot = st.container(key='profile_card_slot', gap=None)
+            if not values:
+                st.session_state.profile_preview_key = None
+                card_slot.caption('시그니처 향수를 하나 이상 추가하면 프로필 카드가 표시됩니다.')
+                url_slot.empty()
+                return
+            orientation = 'horizontal' if layout == '가로형' else 'vertical'
+            preview_key = (tuple(values), orientation)
+            # Retire the previous portrait while a different one is being prepared.
+            # Search-only reruns can keep showing the current portrait.
+            image_slot = card_slot
+            if st.session_state.get('profile_preview_key') != preview_key:
+                image_slot = card_slot.empty()
+            with url_slot:
                 address = urlsplit(st.context.url or '')
                 query_string = urlencode([(key, value) for key in st.query_params if key != 'logo'
                                           for value in st.query_params.get_all(key)])
                 st.caption('프로필 저장 URL:')
                 st.code(urlunsplit((address.scheme, address.netloc, address.path, query_string, '')),
                         language=None, wrap_lines=True)
-        with preview, st.container(key='profile_preview'):
-            if not values:
-                st.caption('시그니처 향수를 하나 이상 추가하면 프로필 카드가 표시됩니다.')
-                return
-            layout = st.radio('카드 형태', ['가로형', '세로형'], horizontal=True, key='profile_orientation')
-            orientation = 'horizontal' if layout == '가로형' else 'vertical'
             try:
-                with st.spinner('나만의 향 프로필을 만드는 중...'):
+                with status_slot, st.spinner('나만의 향 프로필을 만드는 중...'):
                     notes, angles = profile_context(settings_key, map_logic, map_artifact_loader, map_fallback_loader)
                     missing = [identifier for identifier in values if identifier not in notes.index]
                     missing_notes = {}
@@ -265,7 +286,8 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
             except DataLoadError as exc:
                 st.error(str(exc))
                 return
-            st.image(BytesIO(png), use_container_width=True)
+            image_slot.image(BytesIO(png), use_container_width=True)
+            st.session_state.profile_preview_key = preview_key
             st.download_button('프로필 카드 PNG 다운로드', data=png, file_name=f'prism_profile_{orientation}.png',
                                mime='image/png', type='primary', on_click='ignore')
             if profile['color_source'] == 'dominant_section':

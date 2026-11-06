@@ -169,7 +169,12 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
         display:none
     }
     .st-key-profile_controls h3{font-size:20px;font-weight:600;color:#302e38;line-height:1.3;padding:0}
-    .st-key-profile_layout [data-testid="stWidgetLabel"] p{font-size:16px;font-weight:600;color:#302e38}
+    .st-key-profile_layout [data-testid="stWidgetLabel"] p,
+    .st-key-profile_url_slot [data-testid="stCaptionContainer"] p{font-size:16px;font-weight:600;color:#302e38}
+    .st-key-profile_url_slot [data-testid="stCaptionContainer"] p{line-height:1.4}
+    @media (min-width:901px) {
+      .st-key-profile_controls{padding-top:2px}
+    }
     .st-key-profile_layout [data-testid="stCaptionContainer"]{font-size:14px;font-weight:400;color:#6c6975}
     .st-key-profile_layout button p{font-size:14px;white-space:normal;overflow-wrap:anywhere}
     .st-key-profile_layout :is([data-testid="stButton"],[data-testid="stDownloadButton"]) button,
@@ -264,7 +269,7 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
                 address = urlsplit(st.context.url or '')
                 query_string = urlencode([(key, value) for key in st.query_params if key != 'logo'
                                           for value in st.query_params.get_all(key)])
-                st.caption('프로필 저장 URL:')
+                st.caption('프로필 저장 URL')
                 st.code(urlunsplit((address.scheme, address.netloc, address.path, query_string, '')),
                         language=None, wrap_lines=True)
             try:

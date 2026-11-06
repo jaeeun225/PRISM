@@ -300,50 +300,53 @@ def render_integrated(api):
 
 
 def _render_integrated(api):
-    detail = st.session_state.get('integration_detail')
-    bookmark_ids = () if st.session_state.get('integration_route_ready') else st.query_params.get_all('prism_scent')
-    catalog = None
-    try:
-        settings = tuple(sorted(api.data_settings().items()))
-        if bookmark_ids:
+    # Keep search-only captions and loaders off the filter's delta path.
+    with st.container(key='integration_picker', gap=None):
+        detail = st.session_state.get('integration_detail')
+        bookmark_ids = () if st.session_state.get('integration_route_ready') else st.query_params.get_all('prism_scent')
+        catalog = None
+        try:
+            settings = tuple(sorted(api.data_settings().items()))
+            if bookmark_ids:
+                with st.spinner('지도를 불러오는 중…'):
+                    catalog = api.get_recommendation_cache(settings, api.RECOMMENDATION_LOGIC_VERSION)[0]
+                indexed = catalog.set_index('_id')
+                identifier = next((value for value in bookmark_ids if value in indexed.index), None)
+                if identifier is not None:
+                    st.session_state.integration_search = str(indexed.at[identifier, 'Name'])
+                    st.session_state.integration_base = identifier
+            st.session_state.integration_route_ready = True
+            search_column, selection_column = st.columns([3, 2], gap='medium')
+            with search_column, st.container(key='integration_search_box', gap=None):
+                query = st.text_input('향수 이름 또는 브랜드 검색', key='integration_search',
+                                      placeholder='향수 이름 또는 브랜드 입력 후 Enter', on_change=reset_search)
+                st.button('검색어 지우기', key='integration_clear', on_click=reset_map)
             with st.spinner('지도를 불러오는 중…'):
-                catalog = api.get_recommendation_cache(settings, api.RECOMMENDATION_LOGIC_VERSION)[0]
-            indexed = catalog.set_index('_id')
-            identifier = next((value for value in bookmark_ids if value in indexed.index), None)
-            if identifier is not None:
-                st.session_state.integration_search = str(indexed.at[identifier, 'Name'])
-                st.session_state.integration_base = identifier
-        st.session_state.integration_route_ready = True
-        search_column, selection_column = st.columns([3, 2], gap='medium')
-        with search_column, st.container(key='integration_search_box', gap=None):
-            query = st.text_input('향수 이름 또는 브랜드 검색', key='integration_search',
-                                  placeholder=' ', on_change=reset_search)
-            st.button('검색어 지우기', key='integration_clear', on_click=reset_map)
-        with st.spinner('지도를 불러오는 중…'):
-            display = api.get_display_cache(settings, api.MAP_LOGIC_VERSION)
-            if catalog is None and (query.strip() or detail):
-                catalog = api.get_recommendation_cache(settings, api.RECOMMENDATION_LOGIC_VERSION)[0]
-    except api.DataLoadError as exc:
-        st.error(str(exc))
-        return
-    identifier = None
-    search_ids = ()
-    if query.strip():
-        choices = find_perfumes(catalog,query)
-        index = build_label_index(choices)
-        labels = index['labels']
-        ordered_ids = sorted_choices(index,choices['_id'])
-        if labels:
-            with selection_column:
-                identifier = st.selectbox('기준 향수 선택',ordered_ids,index=None,format_func=labels.get,
-                                          key='integration_base',on_change=clear_details)
-            if identifier is None:
-                if len(choices) <= SEARCH_MARKER_LIMIT:
-                    search_ids = ordered_ids
-                else:
-                    st.caption(f'{len(choices):,}개 일치 — 목록에서 선택하세요')
-        else:
-            st.caption('일치하는 향수가 없습니다.')
+                display = api.get_display_cache(settings, api.MAP_LOGIC_VERSION)
+                if catalog is None and (query.strip() or detail):
+                    catalog = api.get_recommendation_cache(settings, api.RECOMMENDATION_LOGIC_VERSION)[0]
+        except api.DataLoadError as exc:
+            st.error(str(exc))
+            return
+        identifier = None
+        search_ids = ()
+        search_message = st.empty()
+        if query.strip():
+            choices = find_perfumes(catalog,query)
+            index = build_label_index(choices)
+            labels = index['labels']
+            ordered_ids = sorted_choices(index,choices['_id'])
+            if labels:
+                with selection_column:
+                    identifier = st.selectbox('기준 향수 선택',ordered_ids,index=None,format_func=labels.get,
+                                              key='integration_base',on_change=clear_details)
+                if identifier is None:
+                    if len(choices) <= SEARCH_MARKER_LIMIT:
+                        search_ids = ordered_ids
+                    else:
+                        search_message.caption(f'{len(choices):,}개 일치 — 목록에서 선택하세요')
+            else:
+                search_message.caption('일치하는 향수가 없습니다.')
     filters,visible_count=filters_ui(api,settings,display['view'])
     results = ranked(settings,identifier,api,api.RECOMMENDATION_LOGIC_VERSION) if identifier else []
     detail=st.session_state.get('integration_detail')
@@ -355,7 +358,7 @@ def _render_integrated(api):
     fig = base_figure if identifier else overlay_figure(base_figure, detail, display['view'])
     permitted={identifier,*(r['id'] for r in results)} if identifier else None
     left,right = st.columns([3,2],gap='medium')
-    with left:
+    with left, st.container(key='integration_chart_slot'):
         reset_hint = '더블클릭·홈: 추천 범위' if identifier else '더블클릭: 전체 보기'
         hint = '마우스 휠: 확대·축소 · 드래그: 영역 확대 · 점 클릭: 상세 정보 · ' + reset_hint
         if visible_count==0:st.caption('조건에 맞는 향수가 없습니다')
@@ -392,13 +395,16 @@ def _render_integrated(api):
             st.caption(hint)
         if filters: st.caption('필터는 배경 분포에 적용됩니다. 기준 향수와 추천 Top 10은 비교를 위해 유지합니다.')
     with right:
+        results_slot = st.container(key='integration_results_slot', gap=None)
+        detail_slot = st.container(key='integration_detail_slot', gap=None)
         if results:
-            with st.container(key='ui_recommendation_heading', gap=None):
+            with results_slot, st.container(key='ui_recommendation_heading', gap=None):
                 name = escape(str(catalog.set_index('_id').loc[identifier, 'Name']))
                 st.markdown(f'<div class="ui-rec-title"><h3>추천 Top <span>10</span></h3>'
                             f'<p>기준: {name}</p></div>', unsafe_allow_html=True)
                 recommendation_rows(results,catalog,detail,api,select_detail)
         elif not detail:
-            st.caption('향수를 검색하고 기준 향수를 선택하면 추천 Top 10이 표시됩니다.')
+            results_slot.caption('향수를 검색하고 기준 향수를 선택하면 추천 Top 10이 표시됩니다.')
         if catalog is not None and detail and catalog['_id'].eq(detail).any():
-            detail_panel(detail,catalog,display['view'],results,api,clear_details)
+            with detail_slot:
+                detail_panel(detail,catalog,display['view'],results,api,clear_details)

@@ -158,34 +158,50 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
         st.error(str(exc))
         return
     st.html("""<style>
-    .st-key-profile_layout {max-width:1120px;margin-inline:auto;}
-    .st-key-profile_controls button p {white-space:normal;overflow-wrap:anywhere;}
-    .st-key-profile_controls [data-testid="stVerticalBlock"] {gap:0.5rem;}
-    .st-key-profile_selected_chips [data-testid="stButton"] {width:max-content;max-width:100%;}
-    .st-key-profile_selected_chips button {border-radius:999px;padding:0.25rem 0.65rem;min-height:2rem;}
-    .st-key-profile_selected_chips button p {font-size:0.85rem;line-height:1.25;}
-    .st-key-profile_preview {max-width:540px;width:100%;margin-inline:auto;}
-    .st-key-profile_preview [data-testid="stVerticalBlock"] {gap:0.5rem;}
-    .st-key-profile_preview [data-testid="stImage"] {width:100%!important;}
-    .st-key-profile_preview img {display:block;width:auto!important;height:auto!important;
-      max-width:100%!important;max-height:max(260px,min(640px,calc(100dvh - 450px)))!important;
-      object-fit:contain;margin-inline:auto;}
+    .st-key-profile_layout{width:100%;min-width:0;font-variant-numeric:lining-nums tabular-nums}
+    .st-key-profile_layout [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] .st-key-profile_controls){column-gap:56px}
+    .st-key-profile_layout [data-testid="stColumn"]:has(.st-key-profile_controls){min-width:0}
+    .st-key-profile_controls [data-testid="stVerticalBlock"],
+    .st-key-profile_preview [data-testid="stVerticalBlock"]{gap:12px}
+    .st-key-profile_controls h3{font-size:20px;font-weight:600;color:#302e38;line-height:1.3;padding:0}
+    .st-key-profile_layout [data-testid="stWidgetLabel"] p{font-size:16px;font-weight:600;color:#302e38}
+    .st-key-profile_layout [data-testid="stCaptionContainer"]{font-size:14px;font-weight:400;color:#6c6975}
+    .st-key-profile_layout button p{font-size:14px;white-space:normal;overflow-wrap:anywhere}
+    .st-key-profile_layout :is([data-testid="stButton"],[data-testid="stDownloadButton"]) button,
+    .st-key-profile_orientation [data-testid="stRadioOption"]{
+        border-radius:8px;min-height:34px;padding:4px 12px;border-width:1px
+    }
+    .st-key-profile_orientation [data-testid="stRadioGroup"]{gap:8px}
+    .st-key-profile_orientation [data-testid="stRadioOption"]{
+        display:flex;align-items:center;border:1px solid rgba(49,51,63,.2);background:white
+    }
+    .st-key-profile_orientation [data-testid="stRadioOption"] > div > div:first-child{display:none}
+    .st-key-profile_orientation [data-testid="stRadioOption"][data-selected="true"]{background:#eeedf9;border-color:#6e7bc9}
+    .st-key-profile_orientation [data-testid="stRadioOption"]:hover{border-color:#6e7bc9}
+    .st-key-profile_orientation [data-testid="stRadioOption"][data-focus-visible="true"]{outline:2px solid #6e7bc9;outline-offset:2px}
+    .st-key-profile_selected_chips [data-testid="stButton"]{width:max-content;max-width:100%}
+    .st-key-profile_controls pre{overflow-wrap:anywhere;padding-right:42px}
+    .st-key-profile_preview{width:100%;min-width:0;margin-inline:auto}
+    .st-key-profile_preview [data-testid="stImage"]{width:100%!important}
+    .st-key-profile_preview img{display:block;width:auto!important;height:auto!important;
+        max-width:100%!important;max-height:clamp(250px,calc(100dvh - 235px),720px)!important;
+        object-fit:contain;margin-inline:auto;box-shadow:0 4px 14px rgba(48,46,56,.09)}
     @media (max-width:900px) {
-      .st-key-profile_layout [data-testid="stHorizontalBlock"]:has(.st-key-profile_controls) {
-        flex-direction:column!important;}
-      .st-key-profile_layout [data-testid="stHorizontalBlock"]:has(.st-key-profile_controls) > [data-testid="stColumn"] {
-        width:100%!important;flex:1 1 100%!important;min-width:0!important;}
-      .st-key-profile_preview img {max-height:none!important;}
+      .st-key-profile_layout [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] .st-key-profile_controls) {
+        flex-direction:column!important;row-gap:24px}
+      .st-key-profile_layout [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] .st-key-profile_controls) > [data-testid="stColumn"] {
+        width:100%!important;flex:1 1 100%!important;min-width:0!important}
+      .st-key-profile_preview img {max-height:none!important}
     }
     </style>""")
     values = restore_selection(set(catalog['_id']))
     with st.container(key='profile_layout'):
         controls, preview = st.columns([1, 1.15], gap='large')
         with controls, st.container(key='profile_controls'):
-            st.subheader('My Profile')
-            st.caption('향수를 검색해 최대 3개까지 추가하세요.')
+            st.subheader('내 향수 프로필', anchor=False)
+            st.caption('향수를 최대 3개 골라 나만의 향수 카드를 만들어 보세요.')
             query = st.text_input('향수 이름 또는 브랜드 검색', key='profile_search',
-                                  on_change=reset_profile_picker)
+                                  placeholder='향수 이름 또는 브랜드 입력 후 Enter', on_change=reset_profile_picker)
             index = profile_label_index(settings_key, recommendation_logic, catalog)
             matches = find_perfumes(catalog, query) if query.strip() else catalog.iloc[:0]
             relevant = set(matches['_id']) | set(values)
@@ -223,7 +239,7 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
                                           for value in st.query_params.get_all(key)])
                 st.caption('프로필 저장 URL:')
                 st.code(urlunsplit((address.scheme, address.netloc, address.path, query_string, '')),
-                        language=None, wrap_lines=False)
+                        language=None, wrap_lines=True)
         with preview, st.container(key='profile_preview'):
             if not values:
                 st.caption('시그니처 향수를 하나 이상 추가하면 프로필 카드가 표시됩니다.')
@@ -245,12 +261,12 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
                                        brand=row['Brand'] if isinstance(row['Brand'], str) else '', image_url=row['Image URL'])
                                   for identifier, row in selected.iterrows()]
                     png = profile_png(profile, signatures, (dict(settings_key)['version'], map_logic,
-                                                            recommendation_logic, 'profile-v12-vertical-spacing'), orientation)
+                                                            recommendation_logic, 'profile-v13-vertical-spacing'), orientation)
             except DataLoadError as exc:
                 st.error(str(exc))
                 return
             st.image(BytesIO(png), use_container_width=True)
-            st.download_button('Download profile PNG', data=png, file_name=f'prism_profile_{orientation}.png',
+            st.download_button('프로필 카드 PNG 다운로드', data=png, file_name=f'prism_profile_{orientation}.png',
                                mime='image/png', type='primary', on_click='ignore')
             if profile['color_source'] == 'dominant_section':
                 st.caption(f"향 계열이 서로 상쇄되는 조합이라 {profile['color_section']} 계열색을 대표색으로 사용했습니다.")

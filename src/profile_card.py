@@ -181,7 +181,7 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
     mark_size, brand_gap = 70, 12
     brand_width = font(33, True).getlength('PRISM')
     brand_x = round((w - mark_size - brand_gap - brand_width) / 2) if vertical else 70
-    mark_y, title_y = (122, 214) if vertical else (61, 140)
+    mark_y, title_y = (122, 280) if vertical else (61, 140)
     with Image.open(Path(__file__).resolve().parents[1] / 'assets' / 'logo_mark.png') as logo:
         mark = logo.convert('RGBA').resize((mark_size, mark_size), Image.Resampling.LANCZOS)
         image.paste(mark, (brand_x, mark_y), mark)
@@ -218,14 +218,12 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
         accord_height = 74+(len(profile['sections'])-1)*120+63 if profile['sections'] else 40
         title_bottom = d.textbbox((w/2,title_y),'My Scent Profile',font=font(64,True),anchor='mt')[3]
         available = h-110-title_bottom-(110+group_height)-accord_height-(70+vertical_note_height)
-        notes_gap = 35
-        # Recover the previous gap from the former title baseline, then
-        # distribute the recovered space above the collection and below notes.
-        previous_available = available + (title_y - 206)
-        previous_signature_gap = round((previous_available-40)*.44)
-        previous_accord_gap = previous_available-40-previous_signature_gap
-        accord_gap = round(previous_accord_gap*.70)
-        signature_gap = previous_signature_gap + round((available-notes_gap-accord_gap-previous_signature_gap)/2)
+        # Reserve the notes break first; a long collection can use the
+        # remaining space in the first two breaks without shifting the footer.
+        notes_gap = min(109, max(80, available - 150))
+        spacing = available - notes_gap
+        signature_gap = min(100, round(spacing * .52))
+        accord_gap = min(91, spacing - signature_gap)
         signature_y = title_bottom+signature_gap
         label('SIGNATURE COLLECTION',70,signature_y,860,True)
         bottle_y = signature_y+110

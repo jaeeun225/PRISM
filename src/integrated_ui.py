@@ -535,6 +535,8 @@ def scoped_styles():
     .st-key-ui_filter_grid [class*="st-key-ui_chip_"]:has(button:hover){z-index:31}
     .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus) .ui-map-tooltip{display:grid}
     @media(max-width:700px){.st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:16px}}
+    .st-key-integration_picker [data-testid="stCaptionContainer"]{margin-top:8px}
+    .st-key-integration_search [data-testid="InputInstructions"]{display:none!important}
     .st-key-integration_search_box{position:relative}
     .st-key-integration_search_box .st-key-integration_clear{position:absolute;right:8px;bottom:4.4px;width:26px;z-index:2}
     .st-key-integration_search_box:not(:has(input:not(:placeholder-shown))) .st-key-integration_clear{display:none}

@@ -1,4 +1,5 @@
 """Presentation-only helpers for the unified map. No artifact inputs changed."""
+import json
 from copy import deepcopy
 from html import escape
 from functools import lru_cache
@@ -37,6 +38,17 @@ def section_colors(section,api):
     if section not in api.COLOR_HUE_ANCHOR:return '#777777','#f3f3f4'
     hue=api.COLOR_HUE_ANCHOR[section]
     return api.marker_rgb(api.hsl_to_css(hue,75,40)),hsl_hex(hue,75,92)
+
+
+def accord_chip_style(section_class, accord, description):
+    content = json.dumps(description, ensure_ascii=False).replace('<', r'\3c ')
+    key = re.sub(r'[^a-zA-Z0-9_-]', '-', accord)
+    return f'{section_class} .st-key-ui_chip_{key}{{--accord-description:{content}}}'
+
+
+def accord_chip(accord, selected, toggle, section_index):
+    st.button(accord, key='ui_chip_'+accord, type='primary' if selected else 'secondary',
+              on_click=toggle, args=(section_index, accord))
 
 
 def card_html(identifier,catalog,view,results,api):
@@ -235,37 +247,6 @@ export default function({data, parentElement, setTriggerValue}) {
         const matches = button => endpoints.every(key => changes[key] === button.args[0][key]);
         graph[atRecommendation] = matches(recommended);
         graph.dataset.prismView = graph[atRecommendation] ? 'recommended' : matches(full) ? 'full' : 'custom';
-        syncRankLabels();
-    }
-
-    function syncRankLabels() {
-        const labels = [];
-        for (const group of graph.querySelectorAll('.annotation[data-index]')) {
-            const annotation = graph.layout.annotations?.[Number(group.dataset.index)];
-            if (!annotation?.name?.startsWith('prism-rank-')) continue;
-            const text = group.querySelector('text');
-            if (!text) continue;
-            const rank = Number(annotation.name.slice('prism-rank-'.length));
-            const outline = graph.data.find(trace => trace.name === 'Recommendation outline' &&
-                trace.x[0] === annotation.x && trace.y[0] === annotation.y);
-            if (!outline) continue;
-            labels.push({rank, text, radius: Number(outline.marker.size) / 2,
-                bounds: text.getBoundingClientRect()});
-        }
-        const fullView = graph.dataset.prismView === 'full';
-        for (const label of labels) {
-            const a = label.bounds;
-            // Annotations sit above WebGL. Hide a lower glyph when a higher
-            // marker covers it, so the glyph cannot leak through the stack.
-            const covered = fullView && labels.some(({rank, bounds: b, radius}) => {
-                if (rank >= label.rank || !b.width) return false;
-                const x = b.left + b.width / 2;
-                const y = b.top + b.height / 2;
-                return Math.hypot(Math.max(a.left - x, x - a.right, 0),
-                                  Math.max(a.top - y, y - a.bottom, 0)) < radius;
-            });
-            label.text.style.visibility = covered ? 'hidden' : '';
-        }
     }
 
     function resetRecommendation() {
@@ -304,34 +285,9 @@ export default function({data, parentElement, setTriggerValue}) {
             return;
         }
 
-        // Hit test the few visible recommendations using the active axes.
-        // Plotly's hover and selection event streams can suppress rapid clicks.
-        const layout = graph._fullLayout;
-        const bounds = graph.querySelector('.svg-container')?.getBoundingClientRect();
-        if (!layout || !bounds) return;
-        const mouseX = event.clientX - bounds.left - layout.xaxis._offset;
-        const mouseY = event.clientY - bounds.top - layout.yaxis._offset;
-        if (mouseX < 0 || mouseX > layout.xaxis._length ||
-            mouseY < 0 || mouseY > layout.yaxis._length) return;
-        let nearest;
-        let bestDistance = Infinity;
-        const fullView = graph.dataset.prismView === 'full';
-        // In full view use the same front-to-back order as the rendered stacks.
-        const traces = [...graph.data.entries()];
-        if (fullView) traces.reverse();
-        for (const [index, trace] of traces) {
-            const customdata = trace.customdata?.[0];
-            if (trace.hoverinfo === 'skip' || typeof customdata?.at(-1) !== 'string') continue;
-            const x = trace.x[0];
-            const y = trace.y[0];
-            const delta = Math.hypot(mouseX - layout.xaxis.d2p(x), mouseY - layout.yaxis.d2p(y));
-            const size = Number(Array.isArray(trace.marker.size) ? trace.marker.size[0] : trace.marker.size);
-            if (delta <= size / 2 + 2 && delta <= bestDistance) {
-                nearest = {customdata, curve_number: index, x, y};
-                bestDistance = delta;
-                if (fullView) break;
-            }
-        }
+        const target = markerAt(event.clientX, event.clientY);
+        if (!target) return;
+        const {nearest, mouseX, mouseY} = target;
         const id = nearest?.customdata.at(-1);
         const last = host[previousClick];
         const now = performance.now();
@@ -348,11 +304,51 @@ export default function({data, parentElement, setTriggerValue}) {
         pending = id;
         setTriggerValue('point', nearest);
     }
+    function markerAt(clientX, clientY) {
+        // Hit test the few visible recommendations using the active axes.
+        // Plotly's hover and selection event streams can suppress rapid clicks.
+        const layout = graph._fullLayout;
+        const bounds = graph.querySelector('.svg-container')?.getBoundingClientRect();
+        if (!layout || !bounds) return;
+        const mouseX = clientX - bounds.left - layout.xaxis._offset;
+        const mouseY = clientY - bounds.top - layout.yaxis._offset;
+        if (mouseX < 0 || mouseX > layout.xaxis._length ||
+            mouseY < 0 || mouseY > layout.yaxis._length) return;
+        let nearest;
+        // Pick the first covering marker in front-to-back drawing order.
+        const traces = [...graph.data.entries()].reverse();
+        for (const [index, trace] of traces) {
+            const customdata = trace.customdata?.[0];
+            if (trace.hoverinfo === 'skip' || typeof customdata?.at(-1) !== 'string') continue;
+            const x = trace.x[0];
+            const y = trace.y[0];
+            const delta = Math.hypot(mouseX - layout.xaxis.d2p(x), mouseY - layout.yaxis.d2p(y));
+            const size = Number(Array.isArray(trace.marker.size) ? trace.marker.size[0] : trace.marker.size);
+            if (delta <= size / 2 + 2) {
+                nearest = {customdata, curve_number: index, x, y};
+                break;
+            }
+        }
+        return {nearest, mouseX, mouseY};
+    }
+
+    function updateHover(event) {
+        const nearest = event.type === 'mouseleave' ? undefined
+            : markerAt(event.clientX, event.clientY)?.nearest;
+        graph._fullData?.forEach((trace, index) => {
+            const source = graph.data[index];
+            if (!source || source.hoverinfo === 'skip' ||
+                typeof source.customdata?.[0]?.at(-1) !== 'string') return;
+            trace.hoverinfo = index === nearest?.curve_number ? source.hoverinfo : 'skip';
+        });
+    }
+
     function detach() {
         graph?.removeEventListener('pointerdown', start, true);
+        graph?.removeEventListener('mousemove', updateHover, true);
+        graph?.removeEventListener('mouseleave', updateHover);
         graph?.removeEventListener('click', resetFromToolbar, true);
         graph?.removeListener('plotly_relayout', trackRange);
-        graph?.removeListener('plotly_afterplot', syncRankLabels);
         document.removeEventListener('pointerup', finish, true);
         document.removeEventListener('pointercancel', cancelPress, true);
     }
@@ -364,9 +360,9 @@ export default function({data, parentElement, setTriggerValue}) {
         graph[atRecommendation] ??= true;
         graph.dataset.prismView ??= 'recommended';
         graph.on('plotly_relayout', trackRange);
-        graph.on('plotly_afterplot', syncRankLabels);
-        syncRankLabels();
         graph.addEventListener('pointerdown', start, true);
+        graph.addEventListener('mousemove', updateHover, true);
+        graph.addEventListener('mouseleave', updateHover);
         graph.addEventListener('click', resetFromToolbar, true);
         document.addEventListener('pointerup', finish, true);
         document.addEventListener('pointercancel', cancelPress, true);
@@ -375,6 +371,11 @@ export default function({data, parentElement, setTriggerValue}) {
     function revealSelection() {
         const list = host.closest('.st-key-prism_unified')?.querySelector('.st-key-ui_rows');
         const buttons = list?.querySelectorAll('button');
+        for (const row of buttons ?? []) {
+            const heading = row.querySelector('strong:first-of-type');
+            if (!heading || heading.title) continue;
+            heading.title = heading.textContent.replace(/^\s*\d+\.\s*/, '').trim();
+        }
         const button = buttons?.[data.rank - 1];
         if (host[selectionSlot] === data.selected && data.selected) return;
         if (!data.selected) {
@@ -472,10 +473,10 @@ def scoped_styles():
     .st-key-prism_unified .st-key-ui_rows button[kind="primary"]{background:#eeedf9;border-color:#a9add8}
     .st-key-prism_unified .st-key-ui_rows button>div,.st-key-prism_unified .st-key-ui_rows button [data-has-shortcut]{width:100%;min-width:0;justify-content:flex-start}
     .st-key-prism_unified .st-key-ui_rows button [data-testid="stMarkdownContainer"]{width:100%;min-width:0}
-    .st-key-prism_unified .st-key-ui_rows button p{font-size:12px!important;color:#777484;text-align:left!important;width:100%;position:relative;padding-left:44px;min-height:35px;margin:0!important}
+    .st-key-prism_unified .st-key-ui_rows button p{font-size:12px!important;color:#777484;text-align:left!important;width:100%;position:relative;padding-left:44px;min-height:0;margin:0!important;line-height:15px;white-space:nowrap;overflow-wrap:normal}
     .st-key-prism_unified .st-key-ui_rows button img{height:36px!important;max-height:36px!important;width:34px!important;max-width:34px!important;object-fit:contain;position:absolute;left:0;top:0;background:white}
     .st-key-prism_unified .st-key-ui_rows button br{display:none}
-    .st-key-prism_unified .st-key-ui_rows button strong:first-of-type{font-size:14px;color:#302e38;display:block;line-height:1.25;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;margin-bottom:2px}
+    .st-key-prism_unified .st-key-ui_rows button strong:first-of-type{font-size:14px;color:#302e38;display:block;line-height:18px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;margin-bottom:1px}
     .st-key-prism_unified .st-key-ui_rows button strong:last-of-type{position:absolute;right:-54px;top:50%;transform:translateY(-50%);font-size:14px;color:#514d60}
     .st-key-prism_unified .st-key-ui_detail{position:relative}
     .st-key-prism_unified .st-key-ui_close{position:absolute;right:10px;top:6px;z-index:3;width:28px}
@@ -496,19 +497,40 @@ def scoped_styles():
     .st-key-prism_unified{gap:16px}
     .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:56px}
     .st-key-ui_recommendation_chart{position:relative}
+    /* The recommendation chart paints the WebGL background below its SVG marker groups. */
+    .st-key-ui_recommendation_chart .svg-container{background:#fafaf8}
+    .st-key-ui_recommendation_chart .svg-container > .gl-container{position:absolute;inset:0;z-index:0;pointer-events:none}
+    .st-key-ui_recommendation_chart .svg-container > .main-svg{z-index:2}
+    .st-key-ui_recommendation_chart .svg-container > .main-svg:first-child{background:transparent!important;z-index:1}
+    .st-key-ui_recommendation_chart .svg-container > .modebar-container{z-index:3}
+    .st-key-ui_recommendation_chart .svg-container > .main-svg:last-child{z-index:4}
+
     .st-key-ui_recommendation_chart > [data-testid="stElementContainer"]:has(.ui-map-info){position:static}
     .st-key-ui_recommendation_chart .ui-map-info{position:absolute;left:211px;top:14.5px;z-index:20;color:#6b6573;font-size:18px;line-height:24px;cursor:default}
     .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus){color:#6e7bc9}
     .st-key-ui_recommendation_chart .ui-map-tooltip{display:none;position:absolute;left:-14px;top:calc(100% + 7px);width:max-content;max-width:300px;grid-template-columns:auto auto;gap:5px 16px;word-break:keep-all;border-radius:10px;padding:12px 14px;background:#302e38;color:#fff;font-size:14px;line-height:1.4;box-shadow:0 6px 18px rgba(0,0,0,.18);pointer-events:none}
     .st-key-ui_recommendation_chart .ui-map-tooltip::before{content:'';position:absolute;left:19px;top:-7px;border-inline:4px solid transparent;border-bottom:8px solid #302e38}
     .st-key-ui_recommendation_chart .ui-map-tooltip b{font-weight:600}
-    :root:has(.st-key-ui_filter_grid [data-testid="stTooltipHoverTarget"]:hover,
-              .st-key-ui_filter_grid [data-testid="stTooltipHoverTarget"] button:focus-visible)
-      [role="tooltip"] > [data-testid="stTooltipContent"]{
-        background:color-mix(in srgb,var(--prism-accord-tooltip-ink) 14%,white);
-        border:1px solid color-mix(in srgb,var(--prism-accord-tooltip-ink) 40%,white);
+    .st-key-ui_filter_grid [class*="st-key-ui_chip_"]{position:relative}
+    .st-key-ui_filter_grid [class*="st-key-ui_chip_"]::after{
+        content:var(--accord-description,none);position:absolute;z-index:30;pointer-events:none;
+        top:calc(100% + 6px);left:50%;translate:-50% 0;width:max-content;max-width:min(320px,70vw);
+        padding:9px 12px;text-align:left;white-space:normal;word-break:keep-all;
+        border:1px solid color-mix(in srgb,var(--section-ink) 40%,white);
+        background:color-mix(in srgb,var(--section-ink) 14%,white);
         color:#302e38;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.18);
+        font-size:14px;font-weight:400;line-height:1.4;visibility:hidden;opacity:0;transition:none;
     }
+    .st-key-ui_filter_grid [data-testid="stColumn"]:last-child [class*="st-key-ui_chip_"]::after{
+        left:auto;right:0;translate:none
+    }
+    .st-key-ui_filter_grid [class*="st-key-ui_chip_"]:not([data-stale="true"],[data-stale="true"] *):has(button:hover:not(:active))::after{
+        visibility:visible;opacity:1
+    }
+    .st-key-ui_filter_grid :is([data-testid="stColumn"],[data-testid="stElementContainer"]):has([class*="st-key-ui_chip_"] button:hover){
+        position:relative;z-index:30
+    }
+    .st-key-ui_filter_grid [class*="st-key-ui_chip_"]:has(button:hover){z-index:31}
     .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus) .ui-map-tooltip{display:grid}
     @media(max-width:700px){.st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:16px}}
     .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"]{margin-bottom:5px;min-height:0}

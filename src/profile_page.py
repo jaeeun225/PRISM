@@ -74,15 +74,17 @@ def fetch_bottle(url):
 
 
 @st.cache_data(ttl=86400, max_entries=32, show_spinner=False)
-def _profile_png_cached(profile, signatures, version, bottle_images, orientation):
+def _profile_png_cached(profile, signatures, version, bottle_images, orientation, created_on):
     from .profile_card import render_card_png
-    return render_card_png(profile, signatures, bottle_images, orientation=orientation)
+    return render_card_png(profile, signatures, bottle_images, orientation=orientation, created_on=created_on)
 
 
 def profile_png(profile, signatures, version, orientation='horizontal'):
+    from .profile_card import profile_card_date
+
     # Include image bytes in the PNG key so an earlier missing image cannot stick.
     return _profile_png_cached(profile, signatures, version,
-                               [fetch_bottle(row['image_url']) for row in signatures], orientation)
+                               [fetch_bottle(row['image_url']) for row in signatures], orientation, profile_card_date())
 
 
 @st.cache_resource(max_entries=2, show_spinner=False)

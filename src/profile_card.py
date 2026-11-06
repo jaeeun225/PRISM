@@ -1,5 +1,7 @@
 """Pillow-only profile card renderer; loaded only by the profile page."""
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pathlib import Path
 import os
 import logging
@@ -133,7 +135,17 @@ def trim_bottle_image(source):
                       min(w,right+padding), min(h,bottom+padding)))
 
 
-def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientation='horizontal'):
+def profile_card_date():
+    try:
+        seoul = ZoneInfo('Asia/Seoul')
+    except ZoneInfoNotFoundError:
+        seoul = timezone(timedelta(hours=9))
+    today = datetime.now(seoul)
+    months = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
+    return f'{months[today.month - 1]} {today.day}, {today.year}'
+
+
+def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientation='horizontal', created_on=None):
     if not 1 <= len(signatures) <= 3 or len(signatures) != len(bottle_images):
         raise ValueError('A profile card requires 1–3 signatures and aligned images.')
     if orientation not in ('horizontal', 'vertical'):
@@ -169,15 +181,16 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
     mark_size, brand_gap = 70, 12
     brand_width = font(33, True).getlength('PRISM')
     brand_x = round((w - mark_size - brand_gap - brand_width) / 2) if vertical else 70
+    mark_y, title_y = (122, 206) if vertical else (61, 140)
     with Image.open(Path(__file__).resolve().parents[1] / 'assets' / 'logo_mark.png') as logo:
         mark = logo.convert('RGBA').resize((mark_size, mark_size), Image.Resampling.LANCZOS)
-        image.paste(mark, (brand_x, 61), mark)
+        image.paste(mark, (brand_x, mark_y), mark)
     brand_face = font(33, True)
     _, glyph_top, _, glyph_bottom = brand_face.getbbox('PRISM')
-    brand_y = 61 + (mark_size - glyph_top - glyph_bottom) / 2
+    brand_y = mark_y + (mark_size - glyph_top - glyph_bottom) / 2
     d.text((brand_x + mark_size + brand_gap, brand_y), 'PRISM', font=brand_face,
            fill=_mix(bg, fg, .75))
-    text(w/2 if vertical else 70, 140, 'My Scent Profile', 64, True, 'mt' if vertical else None)
+    text(w/2 if vertical else 70, title_y, 'My Scent Profile', 64, True, 'mt' if vertical else None)
     if vertical:
         left, region, bottle_y = 70, 860, 395
     else:
@@ -203,14 +216,17 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
         vertical_notes = limited(note_value,29,830,2)
         vertical_note_height = ((len(vertical_notes)-1)*40+font(29).getbbox(vertical_notes[-1],anchor='mt')[3]) if vertical_notes else 0
         accord_height = 74+(len(profile['sections'])-1)*120+63 if profile['sections'] else 40
-        title_bottom = d.textbbox((w/2,140),'My Scent Profile',font=font(64,True),anchor='mt')[3]
-        # Three equal external gaps; internal label/image/name spacing stays fixed.
-        section_gap = (h-90-title_bottom-(110+group_height)-accord_height-(70+vertical_note_height))/3
-        signature_y = round(title_bottom+section_gap)
+        title_bottom = d.textbbox((w/2,title_y),'My Scent Profile',font=font(64,True),anchor='mt')[3]
+        available = h-110-title_bottom-(110+group_height)-accord_height-(70+vertical_note_height)
+        notes_gap = 40
+        # Use the remaining space above the collection and below the names.
+        signature_gap = round((available-notes_gap)*.44)
+        accord_gap = available-notes_gap-signature_gap
+        signature_y = title_bottom+signature_gap
         label('SIGNATURE COLLECTION',70,signature_y,860,True)
         bottle_y = signature_y+110
-        vertical_accord_y = round(bottle_y+group_height+section_gap)
-        vertical_notes_y = round(vertical_accord_y+accord_height+section_gap)
+        vertical_accord_y = bottle_y+group_height+accord_gap
+        vertical_notes_y = vertical_accord_y+accord_height+notes_gap
     group_bottom = bottle_y+group_height
     start = left+(region-(box_w*n+gap*(n-1)))/2
     for i, (row, data) in enumerate(zip(signatures, bottle_images)):
@@ -268,5 +284,7 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
     label('NOTES YOU GRAVITATE TOWARD',ix,ny,iw,vertical)
     for i,line in enumerate(note_lines):
         text(ix+iw/2 if vertical else ix,ny+70+i*40,line,29,False,'mt' if vertical else None)
+    d.text((w-70, h-58), created_on or profile_card_date(), font=font(19),
+           fill=_mix(bg, fg, .65), anchor='rs')
     buffer=BytesIO();image.save(buffer,format='PNG',optimize=True)
     return buffer.getvalue()

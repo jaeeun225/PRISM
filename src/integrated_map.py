@@ -7,7 +7,7 @@ from .profile_labels import build_label_index, sorted_choices
 from .integrated_ui import (
     add_rank_ring, add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles,
     recommendation_clicks, search_matches_figure, section_colors, show_rank_ring,
-    spread_section_labels, subset_figure,
+    spread_section_labels, subset_figure, accord_chip, accord_chip_style,
 )
 
 STAGE = 'ui-fix8-v1'
@@ -99,26 +99,30 @@ def figure_for(settings, identifier, filters, stage, _api):
                 if match: trace.hovertemplate += f"<br>Rank: {match['rank']}<br>Similarity: {match['final_score']:.4f}"
                 trace.hovertemplate += '<extra></extra>'
                 trace.hovertext = None
-        # Plotly's WebGL selection can drop text when a point is toggled
-        # off. Keep ranks in non-interactive SVG annotations on the same
-        # coordinates; the underlying fill remains the clickable point.
-        marker_traces = []
-        for trace in fig.data:
-            if trace.mode == 'text':
-                font = trace.textfont
-                add_rank_ring(fig, int(trace.text[0]), float(trace.x[0]), float(trace.y[0]))
-                fig.add_annotation(
-                    x=float(trace.x[0]), y=float(trace.y[0]),
-                    text=f"<b>{trace.text[0]}</b>", name="prism-rank-"+str(trace.text[0]),
-                    showarrow=False, captureevents=False, borderpad=0,
-                    xanchor='center', yanchor='middle',
-                    font=dict(family=font.family, size=font.size, color=font.color[0]),
-                )
-            else:
-                marker_traces.append(trace)
-                neutral = dict(marker=dict(opacity=1))
+        if identifier:
+            # Each SVG group paints its fill and number together. The incoming
+            # triples are already ordered from worst to best by recommendation_figure.
+            layers = [fig.data[0]]
+            for trace in fig.data[1:]:
+                if trace.mode == 'text':
+                    rank = int(trace.text[0])
+                    marker = layers[-1]
+                    marker.update(
+                        mode='markers+text', text=trace.text, textposition='middle center',
+                        textfont=dict(family=trace.textfont.family, weight=trace.textfont.weight,
+                                      size=11.3 if rank >= 10 else trace.textfont.size,
+                                      color=trace.textfont.color),
+                    )
+                    add_rank_ring(fig, rank, float(trace.x[0]), float(trace.y[0]))
+                else:
+                    properties = trace.to_plotly_json()
+                    properties.pop('type')
+                    layers.append(go.Scatter(**properties))
+            fig = go.Figure(layers, fig.layout)
+        else:
+            neutral = dict(marker=dict(opacity=1))
+            for trace in fig.data:
                 trace.update(selected=neutral, unselected=neutral)
-        fig.data = tuple(marker_traces)
         fig.update_layout(clickmode='event+select' if NATIVE_POINTS and not identifier else 'event',selectionrevision=str(identifier))
     # Preserve equal coordinate scale; let ranges expand, never shrink the plot domain.
     fig.update_layout(height=520,autosize=True,margin=dict(l=12,r=12,t=16,b=16),
@@ -223,9 +227,10 @@ def filter_editor(api,groups):
         ink,pale=section_colors(section,api)
         section_class = f'.st-key-prism_unified .st-key-ui_section_{i}'
         css.append(f'{section_class}{{--section-ink:{ink};--section-pale:{pale}}}')
-        trigger = f'{section_class} [class*="st-key-ui_chip_"] [data-testid="stTooltipHoverTarget"]'
-        css.append(f':root:has({trigger}:hover, {trigger} button:focus-visible)'
-                   f'{{--prism-accord-tooltip-ink:{ink}}}')
+        for accord in groups[i][1]:
+            description = ACCORD_DESCRIPTIONS.get(accord)
+            if description:
+                css.append(accord_chip_style(section_class, accord, description))
     st.html('<style>'+''.join(css)+'</style>')
     with st.container(key='ui_filter_grid'):
         # The dense Soft Amber group gets two grid units; remaining rows use four.
@@ -241,8 +246,7 @@ def filter_editor(api,groups):
                     with st.container(horizontal=True,key=f'ui_chips_{i}'):
                         chosen=set(st.session_state.get(f'integration_draft_{i}',[]))
                         for accord in options:
-                            st.button(accord,key='ui_chip_'+accord,type='primary' if accord in chosen else 'secondary',
-                                      help=ACCORD_DESCRIPTIONS.get(accord),on_click=toggle_accord,args=(i,accord))
+                            accord_chip(accord, accord in chosen, toggle_accord, i)
 
 
 def filters_ui(api,settings,view):

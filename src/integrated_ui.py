@@ -551,7 +551,7 @@ def spread_section_labels(figure):
 def scoped_styles():
     st.html('''<style>
     .st-key-prism_unified .st-key-ui_rows,.st-key-prism_unified .st-key-ui_rows [data-testid="stVerticalBlock"]{gap:10px}
-    .st-key-prism_unified .st-key-ui_rows{padding:4px 2px;overflow-y:auto!important;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-color:#aca9be #f5f4f9}
+    .st-key-prism_unified .st-key-ui_rows{padding:4px 0;overflow-y:auto!important;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-color:#aca9be #f5f4f9}
     .st-key-prism_unified .st-key-ui_rows::after{content:'';position:sticky;bottom:0;flex:none;height:6px;margin-top:-6px;background:linear-gradient(transparent,#ebe9f4);pointer-events:none}
     .st-key-prism_unified [data-testid="stMarkdownContainer"]:has(> .ui-rec-title){margin-bottom:0}
     .st-key-prism_unified .ui-rec-title{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin-bottom:7px}
@@ -608,8 +608,13 @@ def scoped_styles():
     /* The bundled Material font has no variable FILL axis; use a solid mask only when registered. */
     .st-key-prism_unified .st-key-ui_detail_add [data-testid=stIconMaterial]::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:var(--detail-heart-filled,0);background:var(--detail-action-color);mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z'/%3E%3C/svg%3E") center/contain no-repeat}
     .st-key-prism_unified .prism-detail-notes b{color:#505b9c;white-space:nowrap}
-    .st-key-prism_unified{gap:16px}
-    .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:56px}
+    .st-key-prism_unified{gap:12px}
+    @media(min-width:701px){
+    .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:20px}
+    .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])) > [data-testid="stColumn"]:first-child{flex:0 0 calc(60% - 28px);width:calc(60% - 28px)}
+    .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])) > [data-testid="stColumn"]:last-child{flex:1 1 0;min-width:0}
+    }
+    .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stPlotlyChart"]) > [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"]{gap:12px}
     .st-key-ui_recommendation_chart{position:relative}
     /* The recommendation chart paints the WebGL background below its SVG marker groups. */
     .st-key-ui_recommendation_chart .svg-container{background:#fafaf8}

@@ -174,8 +174,18 @@ def markdown_text(value):
 
 
 def recommendation_rows(results,catalog,selected,api,select):
+    reference = st.session_state.get('integration_base')
+    result_ids = {result['id'] for result in results}
+    if reference and results and (
+            st.session_state.get('ui_default_card_reference') != reference or selected not in result_ids):
+        first = min(results, key=lambda result: result['rank'])
+        st.session_state.ui_default_card_reference = reference
+        st.session_state.ui_default_card_epoch = st.session_state.get('ui_default_card_epoch', 0) + 1
+        select(first['id'])
+        # Rerun before painting the rows/card so map, row and card share one selection.
+        st.rerun()
     lookup=catalog.set_index('_id')
-    with st.container(height=224,border=False,key='ui_rows'):
+    with st.container(height=223,border=False,key='ui_rows'):
         for result in results:
             row=lookup.loc[result['id']]
             label=f"![bottle]({image_source(row,api)}) **`{result['rank']}.` *{markdown_text(result['name'])}***  \n*{markdown_text(result['brand'])}* **{result['final_score']:.4f}**"
@@ -450,6 +460,7 @@ export default function({data, parentElement, setTriggerValue}) {
         document.addEventListener('pointercancel', cancelPress, true);
     }
     const selectionSlot = Symbol.for('prism.recommendation.scrolledSelection');
+    const defaultScrollSlot = Symbol.for('prism.recommendation.defaultScroll');
     function revealSelection() {
         const list = host.closest('.st-key-prism_unified')?.querySelector('.st-key-ui_rows');
         const buttons = list?.querySelectorAll('button');
@@ -459,6 +470,11 @@ export default function({data, parentElement, setTriggerValue}) {
             heading.title = heading.textContent.trim();
         }
         const button = buttons?.[data.rank - 1];
+        if (data.rank === 1 && data.defaultEpoch &&
+            host[defaultScrollSlot] !== data.defaultEpoch && button?.getAttribute('kind') === 'primary') {
+            list.scrollTop = 0;
+            host[defaultScrollSlot] = data.defaultEpoch;
+        }
         if (host[selectionSlot] === data.selected && data.selected) return;
         if (!data.selected) {
             delete host[selectionSlot];
@@ -496,7 +512,8 @@ export default function({data, parentElement, setTriggerValue}) {
 
 
 def recommendation_clicks(*, key, selected, rank, on_point):
-    _recommendation_click_component()(key=key, data={'selected': selected, 'rank': rank},
+    _recommendation_click_component()(key=key, data={'selected': selected, 'rank': rank,
+                                            'defaultEpoch': st.session_state.get('ui_default_card_epoch', 0)},
                                       on_point_change=on_point)
 
 
@@ -534,7 +551,7 @@ def spread_section_labels(figure):
 def scoped_styles():
     st.html('''<style>
     .st-key-prism_unified .st-key-ui_rows,.st-key-prism_unified .st-key-ui_rows [data-testid="stVerticalBlock"]{gap:10px}
-    .st-key-prism_unified .st-key-ui_rows{padding:4px 2px;overflow-y:scroll!important;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-color:#aca9be #f5f4f9}
+    .st-key-prism_unified .st-key-ui_rows{padding:4px 2px;overflow-y:auto!important;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-color:#aca9be #f5f4f9}
     .st-key-prism_unified .st-key-ui_rows::after{content:'';position:sticky;bottom:0;flex:none;height:6px;margin-top:-6px;background:linear-gradient(transparent,#ebe9f4);pointer-events:none}
     .st-key-prism_unified [data-testid="stMarkdownContainer"]:has(> .ui-rec-title){margin-bottom:0}
     .st-key-prism_unified .ui-rec-title{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin-bottom:7px}

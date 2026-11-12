@@ -64,7 +64,8 @@ def _serif_font_cached(size, bold=False, font_dirs=None):
         return ImageFont.load_default()
 
 
-PROFILE_FONT_VERSION = 'josefin-sans-400-700-v1'
+PROFILE_FONT_VERSION = 'josefin-sans-signature-tint-v3'
+PROFILE_BACKGROUND_WHITE_MIX = .60  # Keep 40% of the calculated personal color.
 
 
 @lru_cache(maxsize=1)
@@ -170,20 +171,25 @@ def profile_card_date():
 
 
 def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientation='horizontal', created_on=None):
+    """Signature Tint: the existing profile color on a white-leaning editorial card."""
+    from .profile_labels import display_name
     if not 1 <= len(signatures) <= 3 or len(signatures) != len(bottle_images):
         raise ValueError('A profile card requires 1–3 signatures and aligned images.')
     if orientation not in ('horizontal', 'vertical'):
         raise ValueError('Unknown card orientation')
     vertical = orientation == 'vertical'
     w, h = (1000, 1750) if vertical else (1750, 1000)
-    bg, fg = profile['background'], profile['foreground']
+    # Presentation only: never mutate the calculated profile or its palette.
+    bg = _mix(profile['background'], '#FFFFFF', PROFILE_BACKGROUND_WHITE_MIX)
+    ink, muted, hairline = '#1A1A1A', '#6B6B72', '#D6D6DA'
     image = Image.new('RGB', (w, h), bg)
     d = ImageDraw.Draw(image)
     font = lambda size, bold=False: card_font(size, bold, font_dirs)
-    ornament = _mix(bg, fg, .22)
-    d.rounded_rectangle((35, 35, w-35, h-35), radius=25, outline=ornament, width=2)
-    def text(x, y, value, size=28, bold=False, anchor=None):
-        d.text((x, y), value, font=font(size, bold), fill=fg, anchor=anchor)
+    d.rectangle((0, 0, w-1, h-1), outline=_mix(profile['background'], hairline, .62), width=1)
+
+    def text(x, y, value, size=28, bold=False, anchor=None, fill=ink):
+        d.text((x, y), value, font=font(size, bold), fill=fill, anchor=anchor)
+
     def limited(value, size, width, count=2, bold=False):
         lines = _wrap(value, font(size, bold), width)
         if len(lines) > count:
@@ -193,124 +199,105 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
                 tail = tail[:-1]
             lines[-1] = tail+'…'
         return lines
-    def label(value, x, y, width, centered=False):
-        face = font(21, True)
-        spacing = 3
-        length = sum(face.getlength(c) for c in value) + spacing*(len(value)-1)
-        left = x+(width-length)/2 if centered else x
+
+    def tracked(value, x, y, size, spacing, centered=False, fill=ink):
+        face = font(size)
+        length = sum(face.getlength(c) for c in value) + spacing*max(0, len(value)-1)
+        left = x-length/2 if centered else x
         for c in value:
-            d.text((left, y), c, font=face, fill=fg)
+            d.text((left, y), c, font=face, fill=fill, anchor='lt')
             left += face.getlength(c)+spacing
-        d.line((x, y+40, x+width, y+40), fill=ornament, width=1)
+
+    def label(value, x, y, width, centered=False):
+        tracked(value, x+width/2 if centered else x, y, 21, 3, centered)
+        d.line((x, y+40, x+width, y+40), fill=hairline, width=1)
+
     mark_size, brand_gap = 70, 12
-    brand_width = font(33, True).getlength('PRISM')
-    brand_x = round((w - mark_size - brand_gap - brand_width) / 2) if vertical else 70
-    mark_y, title_y = (122, 280) if vertical else (61, 140)
-    with Image.open(Path(__file__).resolve().parents[1] / 'assets' / 'logo_mark.png') as logo:
+    brand_face = font(33)
+    brand_width = brand_face.getlength('PRISM')
+    brand_x = round((w-mark_size-brand_gap-brand_width)/2) if vertical else 70
+    mark_y, title_y = (95, 225) if vertical else (61, 140)
+    with Image.open(Path(__file__).resolve().parents[1]/'assets'/'logo_mark.png') as logo:
         mark = logo.convert('RGBA').resize((mark_size, mark_size), Image.Resampling.LANCZOS)
         image.paste(mark, (brand_x, mark_y), mark)
-    brand_face = font(33, True)
     _, glyph_top, _, glyph_bottom = brand_face.getbbox('PRISM')
-    brand_y = mark_y + (mark_size - glyph_top - glyph_bottom) / 2
-    d.text((brand_x + mark_size + brand_gap, brand_y), 'PRISM', font=brand_face,
-           fill=_mix(bg, fg, .75))
-    text(w/2 if vertical else 70, title_y, 'My Scent Profile', 64, True, 'mt' if vertical else None)
-    if vertical:
-        left, region, bottle_y = 70, 860, 395
-    else:
-        label('SIGNATURE COLLECTION', 70, 250, 865)
-        left, region, bottle_y = 70, 865, 315
-        d.line((985, 250, 985, 900), fill=ornament, width=1)
+    brand_y = mark_y+(mark_size-glyph_top-glyph_bottom)/2
+    d.text((brand_x+mark_size+brand_gap, brand_y), 'PRISM', font=brand_face, fill=ink)
+    text(w/2 if vertical else 70, title_y, 'My Scent Profile', 56, False, 'mt' if vertical else None)
+    left, region = (70, 860) if vertical else (70, 865)
     n = len(signatures)
     box_w, box_h, gap = 250, 312, 28
     if n == 3 and 3*265+2*gap <= region:
         box_w, box_h = 265, round(265*1.25)
     name_lines = []
     for row in signatures:
-        lines = balanced_name_lines(row['name'],font(30,True),box_w+4)
-        name_lines.append(lines if len(lines) <= 2 else limited(row['name'],30,box_w+4,2,True))
-    name_height = max(((len(lines)-1)*37 + font(30,True).getbbox(lines[-1],anchor='mt')[3]
+        # Reuse the existing display-label helper; raw names and IDs are untouched.
+        value = display_name(row['name'], row['brand'])
+        lines = balanced_name_lines(value, font(30), box_w+4)
+        name_lines.append(lines if len(lines) <= 2 else limited(value, 30, box_w+4, 2))
+    name_height = max(((len(lines)-1)*37+font(30).getbbox(lines[-1], anchor='mt')[3]
                        if lines else 0) for lines in name_lines)
     group_height = box_h+28+38+name_height
-    if not vertical:
-        # One shared top coordinate, based on the tallest name in this selection.
-        bottle_y = round(290+(900-290-group_height)/2)
+    notes = ' · '.join(item['name'] for item in profile['notes']) or 'No note information available'
+    iw = 830 if vertical else 635
+    note_lines = limited(notes, 29, iw, 3)
+    note_height = ((len(note_lines)-1)*40+font(29).getbbox(note_lines[-1], anchor='mt')[3]) if note_lines else 0
+    accord_height = 74+(len(profile['sections'])-1)*120+63 if profile['sections'] else 40
+    if vertical:
+        title_bottom = d.textbbox((w/2, title_y), 'My Scent Profile', font=font(56), anchor='mt')[3]
+        # Equal breaks between the title, collection, accord balance and notes.
+        available = h-110-title_bottom-(80+group_height)-accord_height-(70+note_height)
+        section_gap = available/3
+        signature_y = round(title_bottom+section_gap)
+        bottle_y = signature_y+80
+        iy = round(bottle_y+group_height+section_gap)
+        ny = round(iy+accord_height+section_gap)
+        label('SIGNATURE COLLECTION', 70, signature_y, 860, True)
+        ix = 85
     else:
-        note_value = ' · '.join(item['name'] for item in profile['notes']) or 'No note information available'
-        vertical_notes = limited(note_value,29,830,2)
-        vertical_note_height = ((len(vertical_notes)-1)*40+font(29).getbbox(vertical_notes[-1],anchor='mt')[3]) if vertical_notes else 0
-        accord_height = 74+(len(profile['sections'])-1)*120+63 if profile['sections'] else 40
-        title_bottom = d.textbbox((w/2,title_y),'My Scent Profile',font=font(64,True),anchor='mt')[3]
-        available = h-110-title_bottom-(110+group_height)-accord_height-(70+vertical_note_height)
-        # Reserve the notes break first; a long collection can use the
-        # remaining space in the first two breaks without shifting the footer.
-        notes_gap = min(109, max(80, available - 150))
-        spacing = available - notes_gap
-        signature_gap = min(100, round(spacing * .52))
-        accord_gap = min(91, spacing - signature_gap)
-        signature_y = title_bottom+signature_gap
-        label('SIGNATURE COLLECTION',70,signature_y,860,True)
-        bottle_y = signature_y+110
-        vertical_accord_y = bottle_y+group_height+accord_gap
-        vertical_notes_y = vertical_accord_y+accord_height+notes_gap
-    group_bottom = bottle_y+group_height
+        label('SIGNATURE COLLECTION', 70, 250, 865)
+        bottle_y = round(290+(900-290-group_height)/2)
+        d.line((985, 250, 985, 900), fill=hairline, width=1)
+        ix, iy, ny = 1045, 250, 740
     start = left+(region-(box_w*n+gap*(n-1)))/2
     for i, (row, data) in enumerate(zip(signatures, bottle_images)):
-        x = round(start+i*(box_w+gap)); cx=x+box_w/2
-        box=(x,bottle_y,x+box_w,bottle_y+box_h)
-        shadow = Image.new('RGBA', image.size)
-        ImageDraw.Draw(shadow).rounded_rectangle(
-            (x,bottle_y+3,x+box_w,bottle_y+box_h+3), radius=16, fill=(0,0,0,24))
-        shadow = shadow.filter(ImageFilter.GaussianBlur(8))
-        image.paste(shadow, (0,0), shadow)
-        d.rounded_rectangle(box,radius=16,fill='#FFFFFF',outline=ornament,width=1)
-        bottle=None
+        x = round(start+i*(box_w+gap)); cx = x+box_w/2
+        d.rectangle((x, bottle_y, x+box_w, bottle_y+box_h), fill='#FFFFFF', outline=hairline, width=1)
+        bottle = None
         if data:
             try:
                 with Image.open(BytesIO(data)) as source:
                     if source.width*source.height <= 16_000_000:
                         trimmed = trim_bottle_image(ImageOps.exif_transpose(source))
-                        bottle=ImageOps.contain(trimmed,(round(box_w*.85),round(box_h*.85)))
+                        bottle = ImageOps.contain(trimmed, (round(box_w*.85), round(box_h*.85)))
             except (OSError, ValueError, Image.DecompressionBombError):
                 pass
         if bottle is not None:
-            image.paste(bottle,(round(cx-bottle.width/2),round(bottle_y+(box_h-bottle.height)/2)),bottle)
+            image.paste(bottle, (round(cx-bottle.width/2), round(bottle_y+(box_h-bottle.height)/2)), bottle)
         else:
-            ghost=_mix('#FFFFFF',PERIWINKLE,.20)
-            cy=bottle_y+box_h/2
-            d.rounded_rectangle((cx-42,cy-25,cx+42,cy+65),radius=12,fill=ghost)
-            d.rectangle((cx-17,cy-48,cx+17,cy-24),fill=ghost)
-            d.rounded_rectangle((cx-23,cy-60,cx+23,cy-46),radius=4,fill=ghost)
-        brand_y=bottle_y+box_h+28
+            ghost = _mix('#FFFFFF', muted, .20)
+            cy = bottle_y+box_h/2
+            d.rounded_rectangle((cx-42, cy-25, cx+42, cy+65), radius=12, fill=ghost)
+            d.rectangle((cx-17, cy-48, cx+17, cy-24), fill=ghost)
+            d.rounded_rectangle((cx-23, cy-60, cx+23, cy-46), radius=4, fill=ghost)
+        brand_y = bottle_y+box_h+28
         brand = ' '.join(str(row['brand'] or '').upper().split())
-        brand_size, spacing = 20, 2
-        while brand and sum(font(brand_size).getlength(c) for c in brand)+spacing*(len(brand)-1) > box_w:
+        while brand and sum(font(20).getlength(c) for c in brand)+2*(len(brand)-1) > box_w:
             brand = brand[:-2].rstrip('…')+'…'
-        brand_width=sum(font(brand_size).getlength(c) for c in brand)+spacing*max(0,len(brand)-1)
-        bx=cx-brand_width/2
-        for char in brand:
-            d.text((bx,brand_y+brand_size),char,font=font(brand_size),fill=fg,anchor='ls')
-            bx+=font(brand_size).getlength(char)+spacing
-        name_y=brand_y+38
-        for j,line in enumerate(name_lines[i]):
-            text(cx,name_y+j*37,line,30,True,'mt')
-    ix, iy, iw = (85, vertical_accord_y, 830) if vertical else (1045, 250, 635)
-    label('YOUR ACCORD BALANCE',ix,iy,iw,vertical)
-    for i,item in enumerate(profile['sections']):
-        y=iy+74+i*120
-        text(ix,y+30,item['section'],30,False,'ls')
-        text(ix+iw,y+30,f"{item['percent']:.1f}%",30,True,'rs')
-        d.rounded_rectangle((ix,y+49,ix+iw,y+63),radius=7,fill=_mix(bg,'#FFFFFF',.55))
-        end=ix+max(12,round(iw*item['percent']/100))
-        d.rounded_rectangle((ix,y+49,end,y+63),radius=7,fill=section_bar_color(item['section']))
-    notes=' · '.join(item['name'] for item in profile['notes']) or 'No note information available'
-    note_lines = limited(notes,29,iw,2)
-    note_height = ((len(note_lines)-1)*40+font(29).getbbox(note_lines[-1],anchor='mt')[3]) if note_lines else 0
-    ny = vertical_notes_y if vertical else 740
-    label('NOTES YOU GRAVITATE TOWARD',ix,ny,iw,vertical)
-    for i,line in enumerate(note_lines):
-        text(ix+iw/2 if vertical else ix,ny+70+i*40,line,29,False,'mt' if vertical else None)
-    d.text((w-70, h-58), created_on or profile_card_date(), font=font(19),
-           fill=_mix(bg, fg, .65), anchor='rs')
-    buffer=BytesIO();image.save(buffer,format='PNG',optimize=True)
+        tracked(brand, cx, brand_y, 20, 2, True, muted)
+        for j, line in enumerate(name_lines[i]):
+            text(cx, brand_y+38+j*37, line, 30, False, 'mt')
+    label('YOUR ACCORD BALANCE', ix, iy, iw, vertical)
+    for i, item in enumerate(profile['sections']):
+        y = iy+74+i*120
+        text(ix, y+30, item['section'], 30, False, 'ls')
+        text(ix+iw, y+30, f"{item['percent']:.1f}%", 30, True, 'rs')
+        d.rectangle((ix, y+49, ix+iw, y+63), fill='#F0F0F2')
+        end = ix+max(12, round(iw*item['percent']/100))
+        d.rectangle((ix, y+49, end, y+63), fill=section_bar_color(item['section']))
+    label('NOTES YOU GRAVITATE TOWARD', ix, ny, iw, vertical)
+    for i, line in enumerate(note_lines):
+        text(ix+iw/2 if vertical else ix, ny+70+i*40, line, 29, False, 'mt' if vertical else None)
+    d.text((w-70, h-58), created_on or profile_card_date(), font=font(19), fill=muted, anchor='rs')
+    buffer = BytesIO(); image.save(buffer, format='PNG', optimize=True)
     return buffer.getvalue()

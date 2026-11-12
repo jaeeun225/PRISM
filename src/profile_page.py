@@ -228,7 +228,7 @@ def profile_surface_styles():
     .profile-empty-formats span:first-child{background:#F0F0F2}
     .st-key-profile_card_slot{height:var(--profile-frame-height);min-height:var(--profile-frame-height);box-sizing:border-box;border:1px solid #D6D6DA;padding:12px;display:flex;align-items:center;justify-content:center;gap:0!important}
     .st-key-profile_card_slot > div{width:100%;min-height:0}
-    [data-testid=stAppViewContainer] .st-key-profile_preview .st-key-profile_card_slot img{max-height:calc(var(--profile-frame-height) - 26px)!important;max-width:100%!important;width:auto!important;height:auto!important;margin:auto;box-shadow:none!important;object-fit:contain}
+    [data-testid=stAppViewContainer] .st-key-profile_preview .st-key-profile_card_slot img{max-height:calc(var(--profile-frame-height) - 26px)!important;max-width:100%!important;width:auto!important;height:auto!important;margin:auto;box-shadow:none!important;border-radius:0!important;object-fit:contain}
     .profile-empty-card{height:calc(var(--profile-frame-height) - 26px);border:1px solid #D6D6DA;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;box-sizing:border-box;text-align:center}
     .profile-bottle-outline{display:block;position:relative;width:38px;height:48px;border:1px solid #D6D6DA;border-radius:8px;margin:16px 0 8px}
     .profile-bottle-outline::before{content:'';position:absolute;width:14px;height:20px;border:1px solid #D6D6DA;top:-23px;left:10px}

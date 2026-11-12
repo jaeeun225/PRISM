@@ -583,7 +583,7 @@ def scoped_styles():
     .st-key-prism_unified .st-key-ui_detail{position:relative}
     .st-key-prism_unified .st-key-ui_close{position:absolute;right:10px;top:6px;z-index:3;width:28px}
     .st-key-prism_unified .st-key-ui_close button{font-size:18px;color:#6c6975;min-height:25px;padding:0 6px;background:transparent;border:0}
-    .st-key-prism_unified .prism-detail-card{border:1px solid;border-radius:16px;box-shadow:0 3px 12px #38384b09;padding:8px 16px;box-sizing:border-box}
+    .st-key-prism_unified .prism-detail-card{border:1px solid;border-radius:16px;box-shadow:0 3px 12px #38384b09;padding:8px 16px;box-sizing:border-box;min-height:254px}
     .st-key-prism_unified .prism-detail-top{display:flex;align-items:flex-start;gap:12px}
     .st-key-prism_unified .prism-detail-image{flex:0 0 auto;background:white;border:1px solid;border-radius:10px;padding:4px}
     .st-key-prism_unified .prism-detail-image img{display:block;width:120px;height:126px;object-fit:contain}

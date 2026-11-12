@@ -1,17 +1,21 @@
 """Unified UI only. Existing artifact, ranking and highlight functions are reused."""
+import math
 import streamlit as st
 import plotly.graph_objects as go
 from html import escape
+from .scent_map import interp_color_from_position, radius_to_hsl
 from .catalog_search import find_perfumes
 from .profile_labels import build_label_index, sorted_choices
 from .integrated_ui import (
     add_rank_ring, add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles,
     recommendation_clicks, search_matches_figure, section_colors, show_rank_ring,
-    spread_section_labels, subset_figure, accord_chip, accord_chip_style,
+    spread_section_labels, subset_figure, accord_chip, accord_chip_style, display_text_color,
 )
 
 STAGE = 'ui-fix8-v1'
 SEARCH_MARKER_LIMIT = 30
+BACKGROUND_POINT_SIZE = 2.0
+DISPLAY_SATURATION_EXPONENT = 1.5
 NATIVE_POINTS = True
 
 
@@ -49,6 +53,34 @@ def ranked(settings, identifier, _api, recommendation_logic=""):
     return _api.recommend(identifier, catalog, accords, notes)
 
 
+@st.cache_resource(show_spinner=False, max_entries=2)
+def display_cache(settings, logic, saturation_exponent, _api):
+    """Keep artifact data immutable; share one display palette across map and cards."""
+    original = _api.get_display_cache(settings, logic)
+    view = original['view'].copy()
+    centers = {name: values['center'] for name, values in original['section_angles'].items()}
+    minimum_saturation, _ = radius_to_hsl(0)
+    saturations = []
+    for x, y in zip(view.scent_map_x, view.scent_map_y):
+        radius = min(1., math.hypot(x, y))
+        angle = math.degrees(math.atan2(x, y)) % 360
+        _, chroma = interp_color_from_position(angle, centers)
+        saturation = (minimum_saturation + (1 - minimum_saturation) * radius ** saturation_exponent) * chroma
+        saturations.append(round(saturation * 100, 1))
+    view['scent_map_saturation'] = saturations
+    view['plot_color'] = [
+        _api.hsl_to_css(hue, saturation, lightness)
+        for hue, saturation, lightness in zip(
+            view.scent_map_hue, view.scent_map_saturation, view.scent_map_lightness
+        )
+    ]
+    view['marker_rgb'] = view.plot_color.map(_api.marker_rgb)
+    view['marker_border'] = view.marker_rgb.map(_api.darker_border)
+    view['marker_text'] = view.marker_rgb.map(display_text_color)
+    full = _api.fast_figure(view, original['template'], '')
+    return dict(original, view=view, full_figure=full)
+
+
 @st.cache_resource(show_spinner=False,max_entries=8)
 def visible_rows(settings,logic,filters,_view):
     if not filters:return _view
@@ -58,9 +90,9 @@ def visible_rows(settings,logic,filters,_view):
 
 @st.cache_resource(show_spinner=False, max_entries=4)
 def figure_for(settings, identifier, filters, stage, _api):
-    original = _api.get_display_cache(settings, _api.MAP_LOGIC_VERSION)
+    original = display_cache(settings, _api.MAP_LOGIC_VERSION, DISPLAY_SATURATION_EXPONENT, _api)
     view = original['view']
-    visible=visible_rows(settings,_api.MAP_LOGIC_VERSION,filters,view)
+    visible=visible_rows(settings,_api.MAP_LOGIC_VERSION+str(DISPLAY_SATURATION_EXPONENT),filters,view)
     if filters:
         return subset_figure(figure_for(settings,identifier,(),stage,_api),visible,identifier,filters)
     full=original['full_figure']
@@ -93,7 +125,9 @@ def figure_for(settings, identifier, filters, stage, _api):
         # UI-only payload: leave artifact tooltip text and hashed preparation intact.
         bg = fig.data[0]
         bg.hovertext = None
-        bg.hoverlabel = dict(align='left',font=dict(family='Georgia',size=14))
+        bg.hoverlabel.align = 'left'
+        bg.hoverlabel.font.family = 'Georgia'
+        bg.hoverlabel.font.size = 14
         bg.customdata = None if identifier else list(zip(visible['Name'],visible['Brand'],visible['_id']))
         bg.hovertemplate = '<b>%{customdata[0]}</b><br>%{customdata[1]}<extra></extra>'
         bg.hoverinfo = 'skip' if identifier else None
@@ -112,6 +146,10 @@ def figure_for(settings, identifier, filters, stage, _api):
             if trace.hoverinfo != 'skip':
                 match = next((r for r in results if r['id']==point_id),None)
                 row = view.loc[view['_id']==point_id].iloc[0]
+                trace.hoverlabel.bgcolor = [row.marker_rgb] * len(trace.x)
+                trace.hoverlabel.font.color = [row.marker_text] * len(trace.x)
+                if trace.mode == 'text':
+                    trace.textfont.color = [row.marker_text] * len(trace.x)
                 trace.hovertemplate = '<b>'+escape(str(row['Name']))+'</b><br>'+escape(str(row['Brand']))
                 if match: trace.hovertemplate += f"<br>Rank: {match['rank']}<br>Similarity: {match['final_score']:.4f}"
                 trace.hovertemplate += '<extra></extra>'
@@ -170,6 +208,7 @@ def figure_for(settings, identifier, filters, stage, _api):
         )])
     else:
         fig.update_layout(xaxis_range=full_range, yaxis_range=full_range)
+    fig.data[0].marker.size = BACKGROUND_POINT_SIZE
     return spread_section_labels(fig)
 
 
@@ -322,7 +361,7 @@ def _render_integrated(api):
                                       placeholder='향수 이름 또는 브랜드 입력 후 Enter', on_change=reset_search)
                 st.button('검색어 지우기', key='integration_clear', on_click=reset_map)
             with st.spinner('지도를 불러오는 중…'):
-                display = api.get_display_cache(settings, api.MAP_LOGIC_VERSION)
+                display = display_cache(settings, api.MAP_LOGIC_VERSION, DISPLAY_SATURATION_EXPONENT, api)
                 if catalog is None and (query.strip() or detail):
                     catalog = api.get_recommendation_cache(settings, api.RECOMMENDATION_LOGIC_VERSION)[0]
         except api.DataLoadError as exc:
@@ -350,7 +389,7 @@ def _render_integrated(api):
     filters,visible_count=filters_ui(api,settings,display['view'])
     results = ranked(settings,identifier,api,api.RECOMMENDATION_LOGIC_VERSION) if identifier else []
     detail=st.session_state.get('integration_detail')
-    figure_version=STAGE+api.MAP_LOGIC_VERSION+api.RECOMMENDATION_LOGIC_VERSION
+    figure_version=STAGE+api.MAP_LOGIC_VERSION+api.RECOMMENDATION_LOGIC_VERSION+f":bg-size={BACKGROUND_POINT_SIZE}:s-exp={DISPLAY_SATURATION_EXPONENT}"
     base_figure=figure_for(settings,identifier,filters,figure_version,api)
     if search_ids:
         matches = api.get_coordinates([i for i in search_ids if i != detail], display['view'])

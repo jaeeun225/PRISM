@@ -8,7 +8,7 @@ from io import BytesIO
 import plotly.graph_objects as go
 import streamlit as st
 from .scent_profile import pastel_colors, contrast_ratio, hsl_hex
-from .scent_map import safe_eval, recommendation_marker_size
+from .scent_map import safe_eval, recommendation_marker_size, contrast_text_color
 
 
 @lru_cache(maxsize=1)
@@ -49,6 +49,13 @@ def accord_chip_style(section_class, accord, description):
 def accord_chip(accord, selected, toggle, section_index):
     st.button(accord, key='ui_chip_'+accord, type='primary' if selected else 'secondary',
               on_click=toggle, args=(section_index, accord), wrap=True)
+
+
+def display_text_color(color):
+    """Use the common contrast rule, with the profile palette's 4.5:1 safeguard."""
+    foreground = contrast_text_color(color)
+    background = '#' + ''.join(f'{int(channel.strip()):02x}' for channel in color[4:-1].split(','))
+    return '#000000' if contrast_ratio(background, foreground) < 4.5 else foreground
 
 
 def card_html(identifier,catalog,view,results,api):
@@ -124,6 +131,12 @@ def subset_figure(base,visible,reference,filters):
     figure=shallow_figure(base)
     payload=dict(base._data[0],x=visible.scent_map_x.tolist(),y=visible.scent_map_y.tolist())
     payload['marker']=dict(payload['marker'],color=visible.marker_rgb.tolist())
+    if not reference:
+        payload['hoverlabel'] = dict(
+            payload['hoverlabel'], bgcolor=visible.marker_rgb.tolist(),
+            bordercolor=visible.marker_border.tolist(),
+            font=dict(payload['hoverlabel']['font'], color=visible.marker_text.tolist()),
+        )
     payload['customdata']=None if reference else list(zip(visible['Name'],visible['Brand'],visible['_id']))
     trace=go.Scattergl(payload,_validate=False)
     figure._data[0]=trace.to_plotly_json()
@@ -152,6 +165,9 @@ def search_matches_figure(base, locations, *, show_label):
                     line=dict(width=1.5, color='#2c2c2a')),
         customdata=list(zip(locations['Name'], locations['Brand'], locations['_id'])),
         hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]}<extra></extra>',
+        hoverlabel=dict(align='left', bgcolor=locations.marker_rgb.tolist(),
+                        bordercolor=locations.marker_border.tolist(),
+                        font=dict(family='Georgia', size=14, color=locations.marker_text.tolist())),
         selected=dict(marker=dict(opacity=1)), unselected=dict(marker=dict(opacity=1)),
         showlegend=False,
     ))

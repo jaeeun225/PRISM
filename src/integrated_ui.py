@@ -11,6 +11,27 @@ from .scent_profile import pastel_colors, contrast_ratio, hsl_hex
 from .scent_map import safe_eval, recommendation_marker_size, contrast_text_color
 
 
+DETAIL_ADD_LABEL = "프로필에 추가"
+DETAIL_VIEW_LABEL = "이 향수 기준으로 보기"
+DETAIL_ADDED_LABEL = "프로필에 등록됨"
+DETAIL_FULL_LABEL = "시그니처 최대 3개"
+DETAIL_FULL_REASON = "프로필에서 삭제 후 추가할 수 있습니다."
+
+
+def add_detail_signature(identifier):
+    """Reuse the profile add callback without navigating away from the map."""
+    from .profile_page import add_signature
+    query = {key: st.query_params.get_all(key) for key in st.query_params}
+    route = st.session_state.get('_prism_route_seen')
+    st.session_state.detail_signature_candidate = identifier
+    add_signature('detail_signature_candidate', (identifier,))
+    st.query_params.clear()
+    for key, values in query.items():
+        st.query_params[key] = values
+    st.session_state._profile_url_values = tuple(query.get('prism_scent', []))
+    st.session_state._prism_route_seen = route
+
+
 @lru_cache(maxsize=1)
 def silhouette():
     from PIL import Image, ImageDraw
@@ -95,11 +116,27 @@ def card_html(identifier,catalog,view,results,api):
     return html+'</div>',dict(hue=hue,background=palette['background'],foreground=palette['foreground'],contrast=contrast_ratio(palette['background'],palette['foreground']))
 
 
-def detail_panel(identifier,catalog,view,results,api,close):
+def detail_panel(identifier,catalog,view,results,api,close,reference):
     with st.container(key='ui_detail'):
         st.button('×',key='ui_close',on_click=close,type='tertiary')
-        html,_=card_html(identifier,catalog,view,results,api)
+        html,palette=card_html(identifier,catalog,view,results,api)
         st.markdown(html,unsafe_allow_html=True)
+        from .profile_state import MAX_SIGNATURES
+        signatures = st.session_state.get('profile_signatures', [])
+        added = identifier in signatures
+        full = len(signatures) >= MAX_SIGNATURES
+        label = DETAIL_ADDED_LABEL if added else DETAIL_FULL_LABEL if full else DETAIL_ADD_LABEL
+        # A stable slot prevents actions from shifting the detail card's delta path.
+        with st.container(key='ui_detail_actions', gap=None):
+            st.button(label, key='ui_detail_add', disabled=added or full,
+                      on_click=add_detail_signature, args=(identifier,), width='stretch',
+                      help=DETAIL_FULL_REASON if full and not added else None)
+            name = str(catalog.loc[catalog['_id'].eq(identifier), 'Name'].iloc[0])
+            st.button(DETAIL_VIEW_LABEL, key='ui_detail_reference', width='stretch',
+                      on_click=reference, args=(identifier, name))
+        st.markdown(f"<style>.st-key-ui_detail_actions button{{background:{palette['background']};"
+                    f"color:{palette['foreground']};border-color:{palette['foreground']}66}}</style>",
+                    unsafe_allow_html=True)
 
 
 def markdown_text(value):
@@ -511,6 +548,10 @@ def scoped_styles():
     .st-key-prism_unified .prism-detail-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
     .st-key-prism_unified .prism-detail-chips span{border:1px solid;border-radius:16px;padding:1px 6px;color:#2c2c2a;font-size:12px}
     .st-key-prism_unified .prism-detail-notes{display:grid;grid-template-columns:52px 1fr;gap:4px 8px;font-size:13px;line-height:1.35;margin-top:6px}
+    .st-key-prism_unified .st-key-ui_detail_actions{position:absolute;left:16px;bottom:18px;width:130px;gap:4px;z-index:2}
+    .st-key-prism_unified .st-key-ui_detail_actions button{min-height:25px;height:25px;padding:0 3px;border-radius:7px}
+    .st-key-prism_unified .st-key-ui_detail_actions button p{font-size:11px!important;line-height:18px;white-space:nowrap}
+    .st-key-prism_unified .prism-detail-notes{margin-left:142px;min-height:58px}
     .st-key-prism_unified .prism-detail-notes b{color:#505b9c;white-space:nowrap}
     .st-key-prism_unified{gap:16px}
     .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:56px}

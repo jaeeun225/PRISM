@@ -24,6 +24,14 @@ def clear_details():
     st.session_state.integration_epoch = st.session_state.get('integration_epoch', 0)+1
 
 
+def select_reference(identifier=None, name=None):
+    """Shared entry for the picker and the detail card's reference action."""
+    if identifier is not None:
+        st.session_state.integration_search = name
+        st.session_state.integration_base = identifier
+    clear_details()
+
+
 def reset_search():
     st.session_state.integration_base = None
     clear_details()
@@ -378,7 +386,7 @@ def _render_integrated(api):
             if labels:
                 with selection_column:
                     identifier = st.selectbox('기준 향수 선택',ordered_ids,index=None,format_func=labels.get,
-                                              key='integration_base',on_change=clear_details)
+                                              key='integration_base',on_change=select_reference)
                 if identifier is None:
                     if len(choices) <= SEARCH_MARKER_LIMIT:
                         search_ids = ordered_ids
@@ -446,4 +454,4 @@ def _render_integrated(api):
             results_slot.caption('향수를 검색하고 기준 향수를 선택하면 추천 Top 10이 표시됩니다.')
         if catalog is not None and detail and catalog['_id'].eq(detail).any():
             with detail_slot:
-                detail_panel(detail,catalog,display['view'],results,api,clear_details)
+                detail_panel(detail,catalog,display['view'],results,api,clear_details,select_reference)

@@ -8,7 +8,7 @@ from .scent_map import interp_color_from_position, radius_to_hsl
 from .catalog_search import find_perfumes
 from .profile_labels import build_label_index, sorted_choices
 from .integrated_ui import (
-    localize_figure, add_rank_ring, add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles, map_hint, map_footer,
+    localize_figure, add_rank_ring, add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles, map_hint, map_footer, intro_banner,
     recommendation_clicks, search_matches_figure, section_colors, show_rank_ring,
     spread_section_labels, subset_figure, accord_chip, accord_chip_style, display_text_color,
 )
@@ -330,7 +330,7 @@ def filters_ui(api,settings,view):
     opened=st.session_state.get('ui_filter_open',False)
     status=t('select_all') if not filters else t('selected_count', count=len(filters))
     with st.container(key='ui_filter_shell'):
-        title = ('▾' if opened else '▸') + ' ' + t('filter')
+        title = ('⌄' if opened else '›') + ' ' + t('filter')
         summary = t('shown', shown=count, total=len(view))
         st.button(f'{title} `{summary}`', type='tertiary', key='ui_filter_toggle',
                   width='stretch', on_click=toggle_filter)
@@ -350,6 +350,7 @@ def render_integrated(api):
 
 
 def _render_integrated(api):
+    intro_banner()
     # Keep search-only captions and loaders off the filter's delta path.
     with st.container(key='integration_picker', gap=None):
         detail = st.session_state.get('integration_detail')
@@ -412,7 +413,7 @@ def _render_integrated(api):
     permitted={identifier,*(r['id'] for r in results)} if identifier else None
     left,right = st.columns([3,2],gap='medium')
     with left, st.container(key='integration_chart_slot'):
-        summary = t('map_highlights', count=len(results)) if results else t('map_fragrance_count', count=visible_count)
+        summary = t('map_highlights', count=len(results)) if results else ''
         st.markdown(f'<div class="ui-rec-title"><h3>{t("map_title")}</h3><p>{summary}</p></div>', unsafe_allow_html=True)
         if visible_count==0:st.caption(t('filter_empty'))
         chart_config = dict(scrollZoom=True, displaylogo=False, doubleClick='autosize',
@@ -432,7 +433,7 @@ def _render_integrated(api):
                 show_rank_ring(fig, selected_rank)
                 map_hint(recommended=True)
                 base_row = catalog.loc[catalog['_id'].eq(identifier)].iloc[0]
-                map_footer(labels.get(identifier, str(base_row['Name'])), visible_count)
+                map_footer(labels.get(identifier, str(base_row['Name'])), 'base')
         else:
             map_key = 'integration_map_' + str(st.session_state.get('integration_epoch', 0))
             with st.container(key='ui_empty_chart', gap=None):
@@ -440,17 +441,19 @@ def _render_integrated(api):
                                 on_select=lambda: capture_map(map_key, permitted),
                                 selection_mode='points', config=chart_config)
                 map_hint(recommended=False)
-                map_footer("", visible_count)
+                selected_label = build_label_index(catalog.loc[catalog['_id'].eq(detail)])['labels'].get(detail, '') if detail and catalog is not None else ''
+                map_footer(selected_label, 'selected' if selected_label else None)
         if filters: st.caption(t('filter_note'))
     with right:
         results_slot = st.container(key='integration_results_slot', gap=None)
         detail_slot = st.container(key='integration_detail_slot', gap=None)
         with results_slot, st.container(key='ui_recommendation_heading', gap=None):
-            caption = t('base_caption', name=escape(str(catalog.set_index('_id').loc[identifier, 'Name']))) if results else ''
-            st.markdown(f'<div class="ui-rec-title"><h3>{t("recommend_title")}</h3><p>{caption}</p></div>', unsafe_allow_html=True)
             if results:
+                st.markdown(f'<div class="ui-rec-title"><h3>{t("recommend_title")}</h3></div>', unsafe_allow_html=True)
                 recommendation_rows(results,catalog,detail,api,select_detail)
-            elif not detail:
+            elif detail:
+                st.markdown(f'<div class="ui-rec-title"><h3>{t("details_title")}</h3></div>', unsafe_allow_html=True)
+            else:
                 st.caption(t('choose_base'))
         if catalog is not None and detail and catalog['_id'].eq(detail).any():
             with detail_slot:

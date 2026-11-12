@@ -3,7 +3,7 @@ import json
 from copy import deepcopy
 from html import escape
 from functools import lru_cache
-import base64, re, textwrap
+import base64, re, textwrap, colorsys
 from io import BytesIO
 import plotly.graph_objects as go
 import streamlit as st
@@ -89,18 +89,28 @@ def display_text_color(color):
     return '#000000' if contrast_ratio(background, foreground) < 4.5 else foreground
 
 
+
+def detail_surface_colors(hue, marker):
+    """UI-only tones: shared card hue, reference edge lightness, bounded extremes."""
+    channels = ([int(marker[i:i+2],16) for i in (1,3,5)] if marker.startswith('#')
+                else [int(v) for v in re.findall(r'\d+',marker)[:3]])
+    lightness = colorsys.rgb_to_hls(*(v/255 for v in channels))[1] * 100
+    edge_l = max(64., min(76., lightness + 2.5))
+    return hsl_hex(hue,45,edge_l), hsl_hex(hue,35,max(78.,min(88.,edge_l+14.)))
+
+
 def card_html(identifier,catalog,view,results,api):
     row=catalog.loc[catalog['_id']==identifier].iloc[0]
     location=view.loc[view['_id']==identifier]
     record=location.iloc[0] if not location.empty else None
     hue=float(record['scent_map_hue']) if record is not None else 232.
     palette=pastel_colors(hue,(70,94))
-    edge=hsl_hex(hue,70,84)
     color=str(record['marker_rgb']) if record is not None else '#777777'
+    edge, rule = detail_surface_colors(hue,color)
     match=next((r for r in results if r['id']==identifier),None)
-    badges=(t('rank', rank=match['rank'])+'</span> <span>'+t('similarity', score=match['final_score']) if match else t('selected_perfume'))
+    badges=(t('rank', rank=match['rank'])+'</span> <span>'+t('similarity', score=match['final_score']) if match else t('base') if identifier == st.session_state.get('integration_base') else t('selected_perfume'))
     picture=escape(image_source(row,api),quote=True)
-    html = f'''<div class="prism-detail-card" data-perfume-id="{escape(str(identifier), quote=True)}" style="background:{palette['background']};color:{palette['foreground']};border-color:{edge}">
+    html = f'''<div class="prism-detail-card" data-perfume-id="{escape(str(identifier), quote=True)}" style="background:{palette['background']};color:{palette['foreground']};border-color:{edge};--detail-border:{edge};--detail-rule:{rule}">
     <div class="prism-detail-top">
     <div class="prism-detail-image" style="border-color:{color}"><img src="{picture}" alt=""></div>
     <div class="prism-detail-summary">
@@ -123,7 +133,7 @@ def card_html(identifier,catalog,view,results,api):
             value = escape(", ".join(notes)) if notes else '—'
             html += f'<div class="prism-detail-note"><b>{t({"Top":"top","Middle":"middle","Base":"base_note"}[layer])}</b><div>{value}</div></div>'
         html += '</div>'
-    return html+'</div>',dict(hue=hue,background=palette['background'],foreground=palette['foreground'],contrast=contrast_ratio(palette['background'],palette['foreground']))
+    return html+'</div>',dict(hue=hue,background=palette['background'],foreground=palette['foreground'],border=edge,rule=rule,contrast=contrast_ratio(palette['background'],palette['foreground']))
 
 
 def detail_icon_color(marker, background):
@@ -151,17 +161,20 @@ def detail_panel(identifier,catalog,view,results,api,close,reference):
         with st.container(key='ui_detail_actions', gap=None):
             st.button(t(label), key='ui_detail_add', disabled=full and not added,
                       on_click=add_detail_signature, args=(identifier,), width='stretch',
-                      icon=DETAIL_ADDED_ICON if added else DETAIL_ADD_ICON,
-                      help=t(DETAIL_ADDED_HELP if added else DETAIL_FULL_REASON if full else DETAIL_ADD_HELP))
+                      icon=DETAIL_ADDED_ICON if added else DETAIL_ADD_ICON)
             name = str(catalog.loc[catalog['_id'].eq(identifier), 'Name'].iloc[0])
             st.button(t(DETAIL_VIEW_LABEL), key='ui_detail_reference', width='stretch',
                       on_click=reference, args=(identifier, name),
-                      icon=DETAIL_VIEW_ICON, help=t(DETAIL_VIEW_HELP))
+                      icon=DETAIL_VIEW_ICON)
         location = view.loc[view['_id'].eq(identifier)]
         marker = str(location.iloc[0]['marker_rgb']) if not location.empty else '#777777'
         accent = detail_icon_color(marker, palette['background'])
         rgb = ','.join(str(int(accent[index:index + 2], 16)) for index in (1, 3, 5))
-        st.markdown(f"<style>.st-key-ui_detail_actions{{--detail-action-color:{accent};"
+        add_help = json.dumps(t(DETAIL_ADDED_HELP if added else DETAIL_FULL_REASON if full else DETAIL_ADD_HELP), ensure_ascii=False).replace('<', r'\3c ')
+        view_help = json.dumps(t(DETAIL_VIEW_HELP), ensure_ascii=False).replace('<', r'\3c ')
+        st.markdown(f"<style>.st-key-ui_detail_add{{--detail-help:{add_help}}}"
+                    f".st-key-ui_detail_reference{{--detail-help:{view_help}}}"
+                    f".st-key-ui_detail_actions{{--detail-action-color:{accent};"
                     f"--detail-action-hover:rgba({rgb},.2);--detail-disabled-opacity:{1 if added else .35}}}"
                     f".st-key-prism_unified .st-key-ui_detail_actions .st-key-ui_detail_add [data-testid=stIconMaterial]{{font-variation-settings:"
                     f"'FILL' {1 if added else 0},'wght' 600,'GRAD' 0,'opsz' 28;"
@@ -183,10 +196,16 @@ def map_hint(*, recommended):
 
 
 
-def map_footer(name, count):
-    """Localized footer in the plot's reserved bottom margin; no chart data changes."""
-    st.html('<div class="ui-map-footer"><span>'+escape(name)+'</span><span>'
-            +t('map_fragrance_count', count=count)+'</span></div>')
+def map_footer(name='', kind=None):
+    """HTML-only current-fragrance footer; no language-dependent chart metadata."""
+    label = name if name else t('footer_hint')
+    tag = t('footer_'+kind) if kind else ''
+    st.html('<div class="ui-map-footer" data-kind="'+(kind or 'hint')+'"><span class="ui-map-footer-name" title="'
+            +escape(label,quote=True)+'">'+escape(label)+'</span><span class="ui-map-footer-tag">'+tag+'</span></div>')
+
+
+def intro_banner():
+    st.html('<div class="ui-atlas-intro"><div class="ui-atlas-line"><h2>'+t('atlas_headline')+'</h2></div></div>')
 
 
 def markdown_text(value):
@@ -197,11 +216,10 @@ def recommendation_rows(results,catalog,selected,api,select):
     reference = st.session_state.get('integration_base')
     result_ids = {result['id'] for result in results}
     if reference and results and (
-            st.session_state.get('ui_default_card_reference') != reference or selected not in result_ids):
-        first = min(results, key=lambda result: result['rank'])
+            st.session_state.get('ui_default_card_reference') != reference or selected not in result_ids | {reference}):
         st.session_state.ui_default_card_reference = reference
         st.session_state.ui_default_card_epoch = st.session_state.get('ui_default_card_epoch', 0) + 1
-        select(first['id'])
+        select(reference)
         # Rerun before painting the rows/card so map, row and card share one selection.
         st.rerun()
     lookup=catalog.set_index('_id')
@@ -228,7 +246,7 @@ def localize_figure(base):
     """Prepare stable UI metadata; browser localization preserves chart identity."""
     figure = shallow_figure(base)
     figure._layout['height'] = 480
-    figure._layout['margin'] = dict(figure._layout.get('margin', {}), t=52, b=46)
+    figure._layout['margin'] = dict(figure._layout.get('margin', {}), t=40, b=56)
     figure._layout['paper_bgcolor'] = '#FFFFFF'
     figure._layout['plot_bgcolor'] = '#FFFFFF'
     figure._layout['modebar'] = dict(figure._layout.get('modebar', {}),
@@ -253,7 +271,7 @@ def localize_figure(base):
     for annotation in figure._layout.get('annotations', []):
         annotation['font'] = dict(annotation.get('font', {}), family=family)
     for menu in figure._layout.get('updatemenus', []):
-        menu['font'] = dict(menu.get('font', {}), family=family, color='#1A1A1A')
+        menu['font'] = dict(menu.get('font', {}), family=family, color='#1A1A1A', size=13)
         menu['bordercolor'] = '#D9D9DE'
         menu['bgcolor'] = '#FFFFFF'
         for button, key in zip(menu.get('buttons', []), ('range','full_map')): button['label'] = TEXT[key]['ko']
@@ -391,7 +409,7 @@ export default function({data, parentElement, setTriggerValue}) {
     function positionHelp() {
         const buttons = graph?.querySelectorAll('.updatemenu-button');
         const info = host.querySelector('.ui-map-info');
-        if (buttons?.length && info) info.style.left = (buttons[buttons.length-1].getBoundingClientRect().right-host.getBoundingClientRect().left+10)+'px';
+        if (buttons?.length && info) info.style.setProperty('left', (buttons[buttons.length-1].getBoundingClientRect().right-host.getBoundingClientRect().left+8)+'px', 'important');
     }
     function trackRange(changes) {
         const endpoints = ['xaxis.range[0]', 'xaxis.range[1]', 'yaxis.range[0]', 'yaxis.range[1]'];
@@ -524,6 +542,14 @@ export default function({data, parentElement, setTriggerValue}) {
     const defaultScrollSlot = Symbol.for('prism.recommendation.defaultScroll');
     function revealSelection() {
         positionHelp();
+        graph?.data.forEach((trace, index) => {
+            if (trace.mode !== 'markers' || trace.hoverinfo === 'skip' || !trace.customdata?.[0]) return;
+            const point = graph.getElementsByClassName('trace' + graph._fullData[index].uid)[0]?.querySelector('.point');
+            if (!point) return;
+            const baseSelected = !data.rank && trace.customdata[0].at(-1) === data.selected;
+            point.style.setProperty('stroke', baseSelected ? '#1A1A1A' : trace.marker.line.color, 'important');
+            point.style.setProperty('stroke-width', (baseSelected ? 2.4 : trace.marker.line.width) + 'px', 'important');
+        });
         const list = host.closest('.st-key-prism_unified')?.querySelector('.st-key-ui_rows');
         const buttons = list?.querySelectorAll('button');
         for (const row of buttons ?? []) {
@@ -532,8 +558,7 @@ export default function({data, parentElement, setTriggerValue}) {
             heading.title = heading.textContent.trim();
         }
         const button = buttons?.[data.rank - 1];
-        if (data.rank === 1 && data.defaultEpoch &&
-            host[defaultScrollSlot] !== data.defaultEpoch && button?.getAttribute('kind') === 'primary') {
+        if (data.defaultEpoch && (host[defaultScrollSlot] !== data.defaultEpoch || (!data.rank && data.selected))) {
             list.scrollTop = 0;
             host[defaultScrollSlot] = data.defaultEpoch;
         }
@@ -857,5 +882,83 @@ def scoped_styles():
     :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-group{opacity:1!important}
     :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn path{fill:#6B6B72!important}
     :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn:hover path{fill:#1A1A1A!important}
+
+    /* Atlas presentation: no recommendation, coordinate or selection-state changes. */
+    .st-key-prism_unified{--prism-panel-height:480px}
+    @media(max-height:820px){.st-key-prism_unified{--prism-panel-height:460px}}
+    [data-testid="stMainBlockContainer"]:has(.st-key-prism_unified){padding-bottom:0!important}
+    .st-key-prism_unified .ui-atlas-intro{height:57px;box-sizing:border-box;padding-top:19px}
+    .st-key-prism_unified .ui-atlas-line{display:flex;align-items:baseline;justify-content:space-between;gap:20px;margin-top:0}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .ui-atlas-line h2{font-size:31px!important;font-weight:400!important;line-height:38px!important;letter-spacing:.02em;margin:0;padding:0;color:#1A1A1A;white-space:nowrap}
+    .st-key-prism_unified [data-testid="stColumn"] > [data-testid="stVerticalBlock"]:has(.st-key-integration_results_slot){gap:0!important;padding-top:40px}
+    .st-key-prism_unified [data-testid="stColumn"] > [data-testid="stVerticalBlock"]:is(:has(.st-key-ui_rows),:has(.prism-detail-card)){padding-top:0}
+    .st-key-prism_unified [data-testid="stColumn"]:has(.st-key-ui_rows) .st-key-integration_detail_slot{margin-top:12px}
+    .st-key-prism_unified [data-testid="stColumn"]:not(:has(.st-key-ui_rows)) .prism-detail-card{height:auto;min-height:0}
+    .st-key-prism_unified [data-testid="stColumn"]:not(:has(.st-key-ui_rows)) .prism-detail-notes{margin-top:8px}
+    .st-key-prism_unified .st-key-ui_rows{height:calc(var(--prism-panel-height) - 266px)!important;min-height:0!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart){height:var(--prism-panel-height);min-height:var(--prism-panel-height);max-height:var(--prism-panel-height)}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) [data-testid="stPlotlyChart"],
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) [data-testid="stPlotlyChart"] > div{height:var(--prism-panel-height)!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart)::before{top:39px}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-footer{height:40px;gap:16px;font-size:14px;color:#1A1A1A}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-footer-name{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:20px}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-footer-tag{font-size:12px;color:#6B6B72;line-height:18px;letter-spacing:.06em;text-transform:none!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-footer[data-kind="hint"] .ui-map-footer-name{color:#6B6B72}
+    .st-key-ui_recommendation_chart .updatemenu-button,.st-key-ui_recommendation_chart .updatemenu-button + .updatemenu-button{translate:none!important}
+    .st-key-ui_recommendation_chart .updatemenu-button text{font-size:13px!important}
+    .st-key-ui_recommendation_chart .updatemenu-item-rect{height:28px;fill:#FFFFFF!important;stroke:#D9D9DE!important;stroke-width:1px!important;rx:0;ry:0}
+    .st-key-ui_recommendation_chart [data-prism-view="recommended"] .updatemenu-button:not(.updatemenu-button + .updatemenu-button) .updatemenu-item-rect,
+    .st-key-ui_recommendation_chart [data-prism-view="full"] .updatemenu-button + .updatemenu-button .updatemenu-item-rect{fill:#F0F0F2!important;stroke:#D9D9DE!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-info{left:12px!important;top:11px;font-size:18px;line-height:18px;height:18px}
+    .st-key-ui_recommendation_chart .ui-map-info{left:auto!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar{top:6px!important;right:12px!important;display:flex;gap:0;padding:0!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-group{display:flex;gap:20px;padding:0!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-group:not(:has(.modebar-btn:is([data-prism-original-title="Zoom in"],[data-prism-original-title="Zoom out"],[data-prism-original-title="Reset axes"],[data-title="Zoom in"],[data-title="Zoom out"],[data-title="Reset axes"]))){display:none!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn{position:relative;width:18px;height:28px;line-height:28px;padding:0!important;box-sizing:border-box}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn svg{visibility:hidden}
+    .st-key-prism_unified .st-key-ui_filter_shell{border:0;border-bottom:1px solid #D9D9DE;border-radius:0;background:white}
+    .st-key-prism_unified .st-key-ui_filter_toggle button{background:white!important;padding-left:0;padding-right:0;min-height:44px}
+    .st-key-prism_unified .st-key-ui_filter_toggle p{font-size:15px;font-weight:500;color:#1A1A1A}
+    .st-key-prism_unified .st-key-ui_filter_toggle code{font-size:13px;color:#6B6B72}
+    .st-key-prism_unified .st-key-ui_rows button{display:flex;align-items:center!important}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .st-key-ui_rows button code{top:50%;transform:translateY(-50%);line-height:1;padding-top:1px;font-variant-numeric:lining-nums tabular-nums}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .st-key-ui_rows button strong:last-of-type{line-height:1;padding-top:1px;font-variant-numeric:lining-nums tabular-nums}
+    .st-key-prism_unified .st-key-ui_rows button img{top:50%;transform:translateY(-50%)}
+    .st-key-prism_unified .prism-detail-card,.st-key-prism_unified .prism-detail-image{border-color:var(--detail-border)!important}
+    .st-key-prism_unified .prism-detail-accent{background:var(--detail-rule)!important}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .prism-detail-notes{border-top-color:var(--detail-rule)!important}
+
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) div:has(> [data-testid="stPlotlyChart"]){height:var(--prism-panel-height)!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-group{display:flex!important;gap:20px!important;align-items:center!important;width:max-content}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn{height:28px!important;min-height:28px!important;max-height:28px!important;width:18px!important;line-height:28px!important}
+    .st-key-prism_unified .prism-detail-badges span + span::before{border-left-color:var(--detail-rule)}
+    .st-key-prism_unified div:has(> .st-key-ui_rows){height:calc(var(--prism-panel-height) - 266px)!important;min-height:0!important}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .st-key-ui_rows,
+    [data-testid="stAppViewContainer"] .st-key-prism_unified div:has(> .st-key-ui_rows){height:calc(var(--prism-panel-height) - 266px)!important;max-height:calc(var(--prism-panel-height) - 266px)!important;min-height:0!important;flex:0 0 auto!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) [data-testid="stElementContainer"]:has([data-testid="stPlotlyChart"]),
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) div:has(> [data-testid="stPlotlyChart"]){height:var(--prism-panel-height)!important;max-height:var(--prism-panel-height)!important;min-height:0!important;flex:0 0 auto!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) > [data-testid="stElementContainer"]:has(.ui-map-footer){position:static!important}
+    .st-key-prism_unified .st-key-ui_detail{gap:0!important}
+
+    /* Native modebar tooltips own ::before/::after. Draw icons as backgrounds instead.
+       2 SVG units in a 24-unit viewBox at 18px yields a 1.5px stroke. */
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn{background-image:var(--prism-icon-neutral)!important;background-position:center!important;background-size:18px 18px!important;background-repeat:no-repeat!important;background-color:transparent!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn:hover{background-image:var(--prism-icon-ink)!important}
+    .modebar-btn[data-prism-original-title="Zoom in"]{--prism-icon-neutral:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M12%203v18M3%2012h18%22%20fill%3D%22none%22%20stroke%3D%22%236B6B72%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E");--prism-icon-ink:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M12%203v18M3%2012h18%22%20fill%3D%22none%22%20stroke%3D%22%231A1A1A%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E")}
+    .modebar-btn[data-prism-original-title="Zoom out"]{--prism-icon-neutral:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M3%2012h18%22%20fill%3D%22none%22%20stroke%3D%22%236B6B72%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E");--prism-icon-ink:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M3%2012h18%22%20fill%3D%22none%22%20stroke%3D%22%231A1A1A%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E")}
+    .modebar-btn[data-prism-original-title="Reset axes"]{--prism-icon-neutral:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22m3%2011%209-8%209%208M6%2010v11h12V10M10%2021v-7h4v7%22%20fill%3D%22none%22%20stroke%3D%22%236B6B72%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E");--prism-icon-ink:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22m3%2011%209-8%209%208M6%2010v11h12V10M10%2021v-7h4v7%22%20fill%3D%22none%22%20stroke%3D%22%231A1A1A%22%20stroke-width%3D%222%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E")}
+
+    /* Same immediate, hover-only CSS tooltip behavior as the accord capsules. */
+    .st-key-ui_detail_actions :is(.st-key-ui_detail_add,.st-key-ui_detail_reference)::after{
+        content:var(--detail-help);position:absolute;top:calc(100% + 6px);right:0;
+        width:max-content;max-width:320px;padding:9px 12px;box-sizing:border-box;
+        white-space:normal;word-break:keep-all;text-align:left;
+        background:color-mix(in srgb,var(--detail-action-color) 14%,white);
+        border:1px solid color-mix(in srgb,var(--detail-action-color) 40%,white);
+        color:#302e38;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.18);
+        font-size:14px;font-weight:400;line-height:1.4;z-index:40;
+        pointer-events:none;visibility:hidden;opacity:0;transition:none;
+    }
+    .st-key-ui_detail_actions :is(.st-key-ui_detail_add,.st-key-ui_detail_reference):not([data-stale="true"],[data-stale="true"] *):has(button:hover:not(:active))::after{visibility:visible;opacity:1}
     </style>''')
 

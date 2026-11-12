@@ -25,6 +25,8 @@ for key,ko,en in [
 ('other_section','기타 (지도 미반영)','Other (not mapped)'),('map_loading','지도를 불러오는 중…','Loading the map…'),
 ('no_results','일치하는 향수가 없습니다.','No matching perfumes.'),('matches','{count:,}개 일치 — 목록에서 선택하세요','{count:,} matches — choose from the list'),
 ('filter_empty','조건에 맞는 향수가 없습니다','No perfumes match these filters'),('filter_note','필터는 배경 분포에 적용됩니다. 기준 향수와 추천 Top 10은 비교를 위해 유지합니다.','Filters affect the background. The base perfume and Top 10 remain visible.'),
+('atlas_headline','나만의 향 아틀라스','A personal atlas of scent.'),('details_title','향수 정보','Perfume Details'),
+('footer_base','기준 향수','BASE'),('footer_selected','선택한 향수','SELECTED'),('footer_hint','점을 눌러 향수를 확인하세요','Select a dot to see its fragrance'),
 ('map_title','나의 향 지도','Your scent map'),('map_highlights','추천 {count}개 강조','{count} recommendations highlighted'),('map_fragrance_count','{count:,}개 향수','{count:,} fragrances'),
 ('recommend_title','추천 Top 10','Top 10 Recommendations'),('base_caption','기준 · {name}','Base · {name}'),
 ('choose_base','향수를 검색하고 기준 향수를 선택하면 추천 Top 10이 표시됩니다.','Search for a perfume and choose a base to see your Top 10.'),
@@ -209,10 +211,12 @@ def install_language_styles():
 :root{{--prism-ui-font:{family};--prism-letter-space:{spacing}}}
 html,body,[data-testid="stAppViewContainer"]{{font-family:var(--prism-ui-font),system-ui,sans-serif!important;font-weight:{weight};letter-spacing:{spacing};font-variant-numeric:lining-nums}}
 [data-testid="stAppViewContainer"] *:not([data-testid="stIconMaterial"]):not(.js-plotly-plot,.js-plotly-plot *),[data-baseweb="popover"],[role="tooltip"]{{font-family:var(--prism-ui-font),system-ui,sans-serif!important;font-variant-numeric:lining-nums}}
+.st-key-prism_unified{{font-weight:400}}
+[data-testid="stAppViewContainer"] .st-key-prism_unified [data-testid="stWidgetLabel"] p{{font-weight:600!important}}
 .st-key-prism_nav_tabs button p{{font-size:19px!important;letter-spacing:.04em;font-weight:600!important;color:#4b4f6b}}
 .st-key-prism_nav_tabs button[kind="primary"] p{{color:#25283c}}
 .st-key-prism_nav_tabs{{gap:2px 40px!important}}
-[data-testid="stAppViewContainer"] .st-key-prism_nav .st-key-nav_home button p{{font-family:'Josefin Sans',sans-serif!important;font-size:32px!important;font-weight:600!important;letter-spacing:.06em!important}}
+[data-testid="stAppViewContainer"] .st-key-prism_nav .st-key-nav_home button p{{font-family:'Josefin Sans',sans-serif!important;font-size:32px!important;font-weight:600!important;letter-spacing:.06em!important;position:relative;top:3px}}
 .st-key-prism_nav_right{{height:64px;gap:28px!important;width:fit-content!important;align-items:center!important;flex-wrap:nowrap!important}}
 .st-key-prism_lang{{height:30px;align-items:center!important;gap:8px!important;width:fit-content!important;border-left:1px solid #d2d2df;padding-left:22px}}
 .st-key-prism_lang > div{{width:fit-content!important;flex:none}}
@@ -281,6 +285,37 @@ export default function({data}) {
    }
   }
  }
+
+ function placeTools(g) {
+  const host = g.closest('.st-key-ui_recommendation_chart,.st-key-ui_empty_chart');
+  if (!host) return;
+  const bounds = host.getBoundingClientRect();
+  let cursor = 12;
+  const buttons = [...g.querySelectorAll('.updatemenu-button')];
+  for (const button of buttons) {
+   const text=button.querySelector('text'), rect=button.querySelector('rect');
+   if (!text || !rect) continue;
+   text.setAttribute('text-anchor','start');text.setAttribute('x','0');text.setAttribute('y','0');text.setAttribute('dy','0');
+   const box=text.getBBox(), width=Math.ceil(box.width+24);
+   text.setAttribute('x',String(12-box.x));text.setAttribute('y',String(14-box.y-box.height/2));
+   rect.setAttribute('x','0');rect.setAttribute('y','0');rect.setAttribute('width',String(width));rect.setAttribute('height','28');
+   const matrix=button.parentNode.getScreenCTM();
+   if (matrix) {
+    const target=new DOMPoint(bounds.left+cursor,bounds.top+6).matrixTransform(matrix.inverse());
+    button.setAttribute('transform',`translate(${target.x},${target.y})`);
+   }
+   cursor+=width+6;
+  }
+  const info=host.querySelector('.ui-map-info');
+  if (info) info.style.setProperty('left',(buttons.length?cursor-6+8:12)+'px','important');
+ }
+ async function syncGeometry(g) {
+  const host=g.closest('.st-key-prism_unified');
+  const height=parseFloat(getComputedStyle(host).getPropertyValue('--prism-panel-height'))||480;
+  if (g._fullLayout.height!==height) await window.Plotly.relayout(g,{height});
+  placeTools(g);
+ }
+
  async function sync() {
   const g = document.querySelector('.st-key-prism_unified .js-plotly-plot');
   if (retired) return;
@@ -289,9 +324,11 @@ export default function({data}) {
    if (text.style.fontVariantNumeric !== 'lining-nums') text.style.fontVariantNumeric = 'lining-nums';
   }
   localizeModebar(g);
-  if (busy || !g?._fullLayout || !window.Plotly || g.dataset.prismLanguage === settings.lang) return;
+  if (busy || !g?._fullLayout || !window.Plotly) return;
   busy = true;
   try {
+   await syncGeometry(g);
+   if (g.dataset.prismLanguage === settings.lang) return;
    const layout = {'font.family':settings.family,'hoverlabel.font.family':settings.family,'xaxis.tickfont.family':settings.family,'xaxis.title.font.family':settings.family,'yaxis.tickfont.family':settings.family,'yaxis.title.font.family':settings.family,'legend.font.family':settings.family,'legend.title.font.family':settings.family};
    (g.layout.annotations ?? []).forEach((a,i) => layout[`annotations[${i}].font.family`] = settings.family);
    (g.layout.updatemenus ?? []).forEach((menu,i) => {
@@ -307,6 +344,7 @@ export default function({data}) {
    await window.Plotly.restyle(g, {'hovertemplate':templates,'textfont.family':settings.family,'hoverlabel.font.family':settings.family});
    localizeModebar(g);
    g.dataset.prismLanguage = settings.lang;
+   placeTools(g);
   } finally { busy = false; }
  }
  const observer = new MutationObserver(sync);

@@ -960,5 +960,26 @@ def scoped_styles():
         pointer-events:none;visibility:hidden;opacity:0;transition:none;
     }
     .st-key-ui_detail_actions :is(.st-key-ui_detail_add,.st-key-ui_detail_reference):not([data-stale="true"],[data-stale="true"] *):has(button:hover:not(:active))::after{visibility:visible;opacity:1}
+
+    /* Neutral map help: same immediate CSS-only structure as detail actions. */
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-container{z-index:30!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) :is(.modebar,.modebar-group){overflow:visible!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn::before,
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-tooltip::before{content:none!important;display:none!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn::after,
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-tooltip{
+        background:#F0F0F2!important;border:1px solid #D6D6DA!important;color:#1A1A1A!important;
+        border-radius:10px!important;padding:9px 12px!important;box-shadow:0 6px 18px rgba(0,0,0,.18)!important;
+        font-family:var(--prism-ui-font),system-ui,sans-serif!important;font-size:14px!important;font-weight:400!important;line-height:1.4!important;
+        box-sizing:border-box;pointer-events:none!important;transition:none!important;animation:none!important;
+        visibility:hidden!important;opacity:0!important;z-index:40;transform:none!important;margin:0!important;
+    }
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn::after{
+        content:attr(data-title)!important;display:block!important;position:absolute!important;
+        top:40px!important;right:0!important;left:auto!important;bottom:auto!important;white-space:nowrap!important;width:max-content;max-width:300px;
+    }
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn:hover:not(:active)::after{visibility:visible!important;opacity:1!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-tooltip{top:35px!important;left:-4px!important;display:none!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-info:hover .ui-map-tooltip{display:grid!important;visibility:visible!important;opacity:1!important}
     </style>''')
 

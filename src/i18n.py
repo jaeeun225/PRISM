@@ -216,7 +216,16 @@ def install_language_styles():
 html,body,[data-testid="stAppViewContainer"]{{font-family:var(--prism-ui-font),system-ui,sans-serif!important;font-weight:{weight};letter-spacing:{spacing};font-variant-numeric:lining-nums}}
 [data-testid="stAppViewContainer"] *:not([data-testid="stIconMaterial"]):not(.js-plotly-plot,.js-plotly-plot *),[data-baseweb="popover"],[role="tooltip"]{{font-family:var(--prism-ui-font),system-ui,sans-serif!important;font-variant-numeric:lining-nums}}
 .st-key-prism_unified{{font-weight:400}}
-[data-testid="stAppViewContainer"] .st-key-prism_unified .ui-atlas-intro{{padding-top:{12 if ko else 10.5}px}}
+[data-testid=stAppViewContainer] .st-key-ui_filter_toggle p{{column-gap:0!important;justify-content:flex-start!important}}
+[data-testid=stAppViewContainer] .st-key-ui_filter_toggle p > :is(em,strong){{font:inherit!important}}
+[data-testid=stAppViewContainer] .st-key-ui_filter_toggle p > em{{flex:none;margin-right:9.140625px;position:relative;top:{-1.5 if ko else -2.5}px}}
+[data-testid=stAppViewContainer] .st-key-ui_filter_shell:has(.st-key-ui_filter_body) .st-key-ui_filter_toggle p > em{{top:{-6 if ko else -7}px}}
+
+[data-testid="stAppViewContainer"] .st-key-prism_unified .ui-atlas-intro{{height:{33 if ko else 38}px;padding-top:{0 if ko else .5}px}}
+[data-testid=stAppViewContainer] .st-key-prism_unified .st-key-ui_filter_toggle button{{min-height:{37 if ko else 36}px!important;padding-top:4px!important;padding-bottom:4px!important}}
+[data-testid=stAppViewContainer] .st-key-prism_unified .st-key-ui_filter_shell{{margin-top:{-8 if ko else -7}px!important;margin-bottom:0!important}}
+[data-testid=stAppViewContainer] .st-key-prism_unified .ui-rec-title{{margin-bottom:{8 if ko else 11}px!important}}
+[data-testid=stAppViewContainer] .st-key-prism_unified [data-testid=stColumn] > [data-testid=stVerticalBlock]:has(.st-key-integration_results_slot):not(:has(.prism-detail-card,.st-key-ui_rows)){{padding-top:{36 if ko else 39}px!important}}
 [data-testid="stAppViewContainer"] .st-key-prism_unified [data-testid="stWidgetLabel"] p{{font-weight:600!important}}
 .st-key-prism_nav_tabs button p{{font-size:19px!important;letter-spacing:.04em;font-weight:600!important;color:#4b4f6b}}
 .st-key-prism_nav_tabs button[kind="primary"] p{{color:#25283c}}

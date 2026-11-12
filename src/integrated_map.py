@@ -330,7 +330,7 @@ def filters_ui(api,settings,view):
     opened=st.session_state.get('ui_filter_open',False)
     status=t('select_all') if not filters else t('selected_count', count=len(filters))
     with st.container(key='ui_filter_shell'):
-        title = ('⌄' if opened else '›') + ' ' + t('filter')
+        title = '*' + ('⌄' if opened else '›') + '* **' + t('filter') + '**'
         summary = t('shown', shown=count, total=len(view))
         st.button(f'{title} `{summary}`', type='tertiary', key='ui_filter_toggle',
                   width='stretch', on_click=toggle_filter)

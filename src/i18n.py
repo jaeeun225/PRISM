@@ -25,6 +25,7 @@ for key,ko,en in [
 ('other_section','기타 (지도 미반영)','Other (not mapped)'),('map_loading','지도를 불러오는 중…','Loading the map…'),
 ('no_results','일치하는 향수가 없습니다.','No matching perfumes.'),('matches','{count:,}개 일치 — 목록에서 선택하세요','{count:,} matches — choose from the list'),
 ('filter_empty','조건에 맞는 향수가 없습니다','No perfumes match these filters'),('filter_note','필터는 배경 분포에 적용됩니다. 기준 향수와 추천 Top 10은 비교를 위해 유지합니다.','Filters affect the background. The base perfume and Top 10 remain visible.'),
+('map_title','나의 향 지도','Your scent map'),('map_highlights','추천 {count}개 강조','{count} recommendations highlighted'),('map_fragrance_count','{count:,}개 향수','{count:,} fragrances'),
 ('recommend_title','추천 Top 10','Top 10 Recommendations'),('base_caption','기준 · {name}','Base · {name}'),
 ('choose_base','향수를 검색하고 기준 향수를 선택하면 추천 Top 10이 표시됩니다.','Search for a perfume and choose a base to see your Top 10.'),
 ('rank','추천 {rank}위','Rank {rank}'),('similarity','유사도 {score:.4f}','Similarity {score:.4f}'),('selected_perfume','선택한 향수','Selected perfume'),
@@ -223,7 +224,7 @@ html,body,[data-testid="stAppViewContainer"]{{font-family:var(--prism-ui-font),s
 .st-key-prism_lang > div:has(.prism-lang-divider){{height:28px;display:flex;align-items:center;justify-content:center}}
 .prism-lang-divider{{display:block;width:1px;height:14px;background:#b6b8cb;flex:none;transform:translateY(-2.6px)}}
 [data-testid="stAppViewContainer"] [data-testid="stWidgetLabel"] p{{font-size:{label_size}px!important;font-weight:{label_weight}!important;line-height:20px!important;letter-spacing:{label_space};text-transform:{transform};color:#6a6f9a!important}}
-[data-testid="stAppViewContainer"] .st-key-prism_unified .ui-rec-title h3{{font-size:20px!important;font-weight:600!important;letter-spacing:{'.02em' if ko else '.04em'}}}
+[data-testid="stAppViewContainer"] .st-key-prism_unified .ui-rec-title h3{{font-size:22px!important;font-weight:500!important;letter-spacing:{'.02em' if ko else '.04em'}}}
 .st-key-prism_unified .st-key-ui_rows button{{padding-left:10px}}
 .st-key-prism_unified .st-key-ui_rows button p{{padding-left:60px}}
 .st-key-prism_unified .st-key-ui_rows button code{{position:absolute;left:0;top:0;width:16px;color:#7d84d2!important;font-weight:600!important}}
@@ -246,6 +247,10 @@ html,body,[data-testid="stAppViewContainer"]{{font-family:var(--prism-ui-font),s
 [data-testid="stLayoutWrapper"]:has(> .st-key-ui_chart_language),.st-key-ui_chart_language{{display:none}}
 .st-key-profile_layout h3{{font-weight:600}}
 .st-key-profile_layout [data-testid="InputInstructions"]{{display:none}}
+
+.prism-lang-divider{{transform:translateY(-.6px)}}
+[data-testid="stAppViewContainer"] .st-key-prism_lang{{border-left:0;padding-left:0;gap:10px!important;flex-wrap:nowrap!important}}
+[data-testid="stAppViewContainer"] .st-key-prism_lang > div:has(.prism-lang-divider){{width:1px!important;min-width:1px!important;max-width:1px!important;flex:0 0 1px!important}}
 </style>''')
 
 

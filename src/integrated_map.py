@@ -8,7 +8,7 @@ from .scent_map import interp_color_from_position, radius_to_hsl
 from .catalog_search import find_perfumes
 from .profile_labels import build_label_index, sorted_choices
 from .integrated_ui import (
-    localize_figure, add_rank_ring, add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles, map_hint,
+    localize_figure, add_rank_ring, add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles, map_hint, map_footer,
     recommendation_clicks, search_matches_figure, section_colors, show_rank_ring,
     spread_section_labels, subset_figure, accord_chip, accord_chip_style, display_text_color,
 )
@@ -381,22 +381,24 @@ def _render_integrated(api):
         identifier = None
         search_ids = ()
         search_message = st.empty()
+        labels = {}
+        ordered_ids = []
         if query.strip():
             choices = find_perfumes(catalog,query)
             index = build_label_index(choices)
             labels = index['labels']
             ordered_ids = sorted_choices(index,choices['_id'])
-            if labels:
-                with selection_column:
-                    identifier = st.selectbox(t('base'),ordered_ids,index=None,format_func=labels.get,
-                                              key='integration_base',on_change=select_reference,placeholder=t('choose_option'))
-                if identifier is None:
-                    if len(choices) <= SEARCH_MARKER_LIMIT:
-                        search_ids = ordered_ids
-                    else:
-                        search_message.caption(t('matches', count=len(choices)))
-            else:
+            if not labels:
                 search_message.caption(t('no_results'))
+        with selection_column:
+            identifier = st.selectbox(t('base'),ordered_ids,index=None,format_func=labels.get,
+                                      key='integration_base',on_change=select_reference,
+                                      placeholder=t('choose_option'),disabled=not bool(ordered_ids))
+        if labels and identifier is None:
+            if len(choices) <= SEARCH_MARKER_LIMIT:
+                search_ids = ordered_ids
+            else:
+                search_message.caption(t('matches', count=len(choices)))
     filters,visible_count=filters_ui(api,settings,display['view'])
     results = ranked(settings,identifier,api,api.RECOMMENDATION_LOGIC_VERSION) if identifier else []
     detail=st.session_state.get('integration_detail')
@@ -410,6 +412,8 @@ def _render_integrated(api):
     permitted={identifier,*(r['id'] for r in results)} if identifier else None
     left,right = st.columns([3,2],gap='medium')
     with left, st.container(key='integration_chart_slot'):
+        summary = t('map_highlights', count=len(results)) if results else t('map_fragrance_count', count=visible_count)
+        st.markdown(f'<div class="ui-rec-title"><h3>{t("map_title")}</h3><p>{summary}</p></div>', unsafe_allow_html=True)
         if visible_count==0:st.caption(t('filter_empty'))
         chart_config = dict(scrollZoom=True, displaylogo=False, doubleClick='autosize',
                             modeBarButtonsToRemove=['toImage','select2d','lasso2d','autoScale2d'])
@@ -427,6 +431,8 @@ def _render_integrated(api):
                 )
                 show_rank_ring(fig, selected_rank)
                 map_hint(recommended=True)
+                base_row = catalog.loc[catalog['_id'].eq(identifier)].iloc[0]
+                map_footer(labels.get(identifier, str(base_row['Name'])), visible_count)
         else:
             map_key = 'integration_map_' + str(st.session_state.get('integration_epoch', 0))
             with st.container(key='ui_empty_chart', gap=None):
@@ -434,18 +440,18 @@ def _render_integrated(api):
                                 on_select=lambda: capture_map(map_key, permitted),
                                 selection_mode='points', config=chart_config)
                 map_hint(recommended=False)
+                map_footer("", visible_count)
         if filters: st.caption(t('filter_note'))
     with right:
         results_slot = st.container(key='integration_results_slot', gap=None)
         detail_slot = st.container(key='integration_detail_slot', gap=None)
-        if results:
-            with results_slot, st.container(key='ui_recommendation_heading', gap=None):
-                name = escape(str(catalog.set_index('_id').loc[identifier, 'Name']))
-                st.markdown(f'<div class="ui-rec-title"><h3>{t("recommend_title")}</h3>'
-                            f'<p>{t("base_caption", name=name)}</p></div>', unsafe_allow_html=True)
+        with results_slot, st.container(key='ui_recommendation_heading', gap=None):
+            caption = t('base_caption', name=escape(str(catalog.set_index('_id').loc[identifier, 'Name']))) if results else ''
+            st.markdown(f'<div class="ui-rec-title"><h3>{t("recommend_title")}</h3><p>{caption}</p></div>', unsafe_allow_html=True)
+            if results:
                 recommendation_rows(results,catalog,detail,api,select_detail)
-        elif not detail:
-            results_slot.caption(t('choose_base'))
+            elif not detail:
+                st.caption(t('choose_base'))
         if catalog is not None and detail and catalog['_id'].eq(detail).any():
             with detail_slot:
                 detail_panel(detail,catalog,display['view'],results,api,clear_details,select_reference)

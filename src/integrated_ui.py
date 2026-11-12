@@ -104,8 +104,8 @@ def card_html(identifier,catalog,view,results,api):
     <div class="prism-detail-top">
     <div class="prism-detail-image" style="border-color:{color}"><img src="{picture}" alt=""></div>
     <div class="prism-detail-summary">
-    <div class="prism-detail-name" title="{escape(str(row['Name']), quote=True)}">{escape(str(row['Name']))}</div>
     <div class="prism-detail-brand">{escape(str(row['Brand']))}</div>
+    <div class="prism-detail-name" title="{escape(str(row['Name']), quote=True)}">{escape(str(row['Name']))}</div>
     <div class="prism-detail-accent" style="background:{color}"></div>
     <div class="prism-detail-badges"><span>{badges}</span></div>'''
     if record is not None:
@@ -114,6 +114,7 @@ def card_html(identifier,catalog,view,results,api):
             outline, pale = section_colors(api.ACCORD_TO_SECTION.get(accord), api)
             chips.append(f'<span style="background:{pale};border-color:{outline}">{escape(accord)}</span>')
         html += '<div class="prism-detail-chips">' + ''.join(chips) + '</div>'
+    html += '</div></div>'
     if record is not None:
         parsed = safe_eval(record['Notes']) if isinstance(record['Notes'], str) else record['Notes']
         html += '<div class="prism-detail-notes">'
@@ -122,7 +123,7 @@ def card_html(identifier,catalog,view,results,api):
             value = escape(", ".join(notes)) if notes else '—'
             html += f'<div class="prism-detail-note"><b>{t({"Top":"top","Middle":"middle","Base":"base_note"}[layer])}</b><div>{value}</div></div>'
         html += '</div>'
-    return html+'</div></div></div>',dict(hue=hue,background=palette['background'],foreground=palette['foreground'],contrast=contrast_ratio(palette['background'],palette['foreground']))
+    return html+'</div>',dict(hue=hue,background=palette['background'],foreground=palette['foreground'],contrast=contrast_ratio(palette['background'],palette['foreground']))
 
 
 def detail_icon_color(marker, background):
@@ -181,6 +182,13 @@ def map_hint(*, recommended):
 
 
 
+
+def map_footer(name, count):
+    """Localized footer in the plot's reserved bottom margin; no chart data changes."""
+    st.html('<div class="ui-map-footer"><span>'+escape(name)+'</span><span>'
+            +t('map_fragrance_count', count=count)+'</span></div>')
+
+
 def markdown_text(value):
     return re.sub(r'([\\*\[\]_`])',r'\\\1',str(value)).replace('\n',' ')
 
@@ -197,10 +205,10 @@ def recommendation_rows(results,catalog,selected,api,select):
         # Rerun before painting the rows/card so map, row and card share one selection.
         st.rerun()
     lookup=catalog.set_index('_id')
-    with st.container(height=223,border=False,key='ui_rows'):
+    with st.container(height=214,border=False,key='ui_rows'):
         for result in results:
             row=lookup.loc[result['id']]
-            label=f"![bottle]({image_source(row,api)}) **`{result['rank']}.` *{markdown_text(result['name'])}***  \n*{markdown_text(result['brand'])}* **{result['final_score']:.4f}**"
+            label=f"![bottle]({image_source(row,api)}) **`{result['rank']:02d}` *{markdown_text(result['name'])}***  \n*{markdown_text(result['brand'])}* **{result['final_score']:.4f}**"
             st.button(label,key='ui_rec_'+result['id'],width='stretch',
                       type='primary' if selected==result['id'] else 'secondary',
                       on_click=select,args=(result['id'],))
@@ -219,6 +227,12 @@ def shallow_figure(base):
 def localize_figure(base):
     """Prepare stable UI metadata; browser localization preserves chart identity."""
     figure = shallow_figure(base)
+    figure._layout['height'] = 480
+    figure._layout['margin'] = dict(figure._layout.get('margin', {}), t=52, b=46)
+    figure._layout['paper_bgcolor'] = '#FFFFFF'
+    figure._layout['plot_bgcolor'] = '#FFFFFF'
+    figure._layout['modebar'] = dict(figure._layout.get('modebar', {}),
+                                   color='#6B6B72', activecolor='#1A1A1A', bgcolor='#FFFFFF')
     family = UI_FONT_FALLBACK
     for i, original in enumerate(base._data):
         payload = dict(original)
@@ -239,7 +253,9 @@ def localize_figure(base):
     for annotation in figure._layout.get('annotations', []):
         annotation['font'] = dict(annotation.get('font', {}), family=family)
     for menu in figure._layout.get('updatemenus', []):
-        menu['font'] = dict(menu.get('font', {}), family=family)
+        menu['font'] = dict(menu.get('font', {}), family=family, color='#1A1A1A')
+        menu['bordercolor'] = '#D9D9DE'
+        menu['bgcolor'] = '#FFFFFF'
         for button, key in zip(menu.get('buttons', []), ('range','full_map')): button['label'] = TEXT[key]['ko']
     return figure
 
@@ -346,7 +362,7 @@ def show_rank_ring(figure, rank):
         if shape.name == f'prism-selection-ring-{rank}':
             st.html(f'<style>.st-key-ui_recommendation_chart '
                     f'.layer-above .shape-group[data-index="{index}"] > path'
-                    '{stroke:#6e7bc9!important;stroke-opacity:1!important;pointer-events:none!important}'
+                    '{stroke:#1A1A1A!important;stroke-opacity:1!important;pointer-events:none!important}'
                     '</style>')
             return
 
@@ -755,5 +771,91 @@ def scoped_styles():
     .st-key-prism_unified [class*="st-key-ui_chips_"]{gap:5px}
     .st-key-prism_unified [class*="st-key-ui_chip_"] button[data-testid^="stBaseButton"]{min-height:28px;border-radius:16px;padding:2px 8px;background:white;border:1px solid #dddce4;color:#625f6a;font-size:14px}
     .st-key-prism_unified [class*="st-key-ui_chip_"] button[kind="primary"]{background:var(--section-pale);border-color:var(--section-ink);color:#2c2c2a}
+
+    /* White editorial surfaces only: existing widths, heights, padding and gaps stay intact. */
+    .st-key-prism_unified{--prism-control-border:#D9D9DE;--prism-control-radius:2px}
+    .st-key-prism_unified .st-key-ui_rows{scrollbar-color:#b7b7bc #fff}
+    .st-key-prism_unified .st-key-ui_rows::after{background:linear-gradient(transparent,#fff)}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .ui-rec-title h3{color:#1A1A1A!important}
+    .st-key-prism_unified .st-key-ui_rows button{border-radius:1px!important;background:#fff!important;border-color:transparent!important;border-bottom-color:#D9D9DE!important;box-shadow:none!important}
+    .st-key-prism_unified .st-key-ui_rows button[kind="primary"]{border-color:#1A1A1A!important}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .st-key-ui_rows button[kind="primary"]::before{display:none}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .st-key-ui_rows button code,
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .st-key-ui_rows button strong:last-of-type{color:#1A1A1A!important}
+    .st-key-prism_unified .prism-detail-card{border-radius:1px!important;border-color:#D9D9DE!important;box-shadow:none}
+    .st-key-prism_unified .prism-detail-image{border-radius:1px;border-color:#D9D9DE!important}
+    .st-key-prism_unified .prism-detail-accent{background:#D9D9DE!important}
+    .st-key-prism_unified .prism-detail-badges span{background:#f1f1f2;color:#1A1A1A}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .prism-detail-note b{color:#1A1A1A!important}
+    .st-key-prism_unified .st-key-ui_filter_shell{border-color:#D9D9DE;border-radius:1px}
+    .st-key-prism_unified .st-key-ui_filter_toggle button,
+    .st-key-prism_unified .st-key-ui_filter_shell:has(.st-key-ui_filter_body) .st-key-ui_filter_toggle button{border-radius:0}
+    .st-key-prism_unified .st-key-ui_filter_toggle button:hover{background:#f7f7f7}
+    .st-key-prism_unified .st-key-ui_filter_toggle button:focus-visible{outline-color:#1A1A1A}
+    .st-key-prism_unified .st-key-ui_filter_body{border-top-color:#D9D9DE}
+    .st-key-prism_unified .ui-filter-pending{color:#1A1A1A}
+    .st-key-prism_unified .ui-filter-pending::before{background:#1A1A1A}
+    .st-key-prism_unified .st-key-ui_filter_actions button[kind="primary"]{background:#1A1A1A;border-color:#1A1A1A;color:white}
+    .st-key-prism_unified .st-key-ui_filter_actions button[kind="secondary"]:hover{border-color:#1A1A1A}
+    .st-key-prism_unified .st-key-ui_filter_apply button[kind="secondary"]{border-color:#D9D9DE!important}
+    .st-key-prism_unified [class*="st-key-ui_group_"] button{color:#1A1A1A}
+    .st-key-prism_unified .st-key-ui_filter_grid [class*="st-key-ui_section_"]{background:white;border-top-color:#D9D9DE;border-right-color:#D9D9DE;border-bottom-color:#D9D9DE}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) :is([data-baseweb="input"],[data-baseweb="select"] > div,[data-testid="stTextInputRootElement"],.react-aria-ComboBox > [role="group"]){background:#FFFFFF!important;border-color:transparent transparent #D9D9DE!important;border-style:solid!important;border-width:1px!important;border-radius:0!important;box-shadow:none!important}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) :is([data-baseweb="input"],[data-baseweb="select"] > div,[data-testid="stTextInputRootElement"],.react-aria-ComboBox > [role="group"]):focus-within{border-bottom-color:#1A1A1A!important}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) input{background:transparent!important}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"] p{color:#666666!important;font-size:12px!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart){background:#FFFFFF;border-radius:1px;outline:1px solid #D9D9DE;outline-offset:-1px}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .svg-container{background:#FFFFFF}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-info:is(:hover,:focus){color:#1A1A1A}
+    .st-key-ui_recommendation_chart [data-prism-view="recommended"] .updatemenu-button:not(.updatemenu-button + .updatemenu-button) .updatemenu-item-rect,
+    .st-key-ui_recommendation_chart [data-prism-view="full"] .updatemenu-button + .updatemenu-button .updatemenu-item-rect{fill:#f1f1f2!important;stroke:#1A1A1A!important}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .st-key-ui_rows button code{white-space:nowrap!important;word-break:normal!important;overflow-wrap:normal!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart)::after{content:'';position:absolute;inset:0;border:1px solid #D9D9DE;border-radius:1px;z-index:5;pointer-events:none}
+
+    /* White editorial pass 2. Geometry changes are confined to the requested headings/panel. */
+    .st-key-prism_unified .st-key-integration_chart_slot{gap:0}
+    .st-key-prism_unified .ui-rec-title{height:28px;min-height:28px;flex-wrap:nowrap;align-items:baseline;margin-bottom:12px}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .ui-rec-title h3{font-size:22px!important;line-height:28px!important;font-weight:500!important;white-space:nowrap;letter-spacing:.02em}
+    .st-key-prism_unified .ui-rec-title p{font-size:12px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+    .st-key-prism_unified .st-key-ui_rows,.st-key-prism_unified .st-key-ui_rows [data-testid="stVerticalBlock"]{gap:8px}
+    .st-key-prism_unified .st-key-ui_rows button{height:44px;min-height:44px}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"]{margin-bottom:4px}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) :is([data-testid="stTextInputRootElement"],.react-aria-ComboBox > [role="group"]){padding-left:0!important;background:#FFFFFF!important}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) input{padding-left:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:#FFFFFF!important;opacity:1!important}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) input:-webkit-autofill{-webkit-box-shadow:0 0 0 1000px #FFFFFF inset!important;-webkit-text-fill-color:#1A1A1A!important}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) input::selection{background:#ececee}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [role="group"]:is(:hover,[data-focused],[data-disabled]){background:#FFFFFF!important}
+    .st-key-integration_search_box .st-key-integration_clear button::before,
+    .st-key-integration_base button[aria-label="Clear value"]::before{content:'';position:absolute;left:50%;top:50%;translate:-50% -50%;width:14px;height:14px;background:currentColor;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m6 6 12 12M18 6 6 18' fill='none' stroke='black' stroke-width='1.7'/%3E%3C/svg%3E") center/contain no-repeat}
+    .st-key-integration_base button[aria-label="Clear value"]{position:relative;color:#777777}
+    .st-key-integration_base button[aria-label="Clear value"] svg{visibility:hidden}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .prism-detail-brand{font-size:10px;line-height:16px;letter-spacing:.12em;text-transform:uppercase;anchor-name:none;margin:0 0 4px;padding-right:12px}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .prism-detail-name{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:23px;font-size:19px!important;overflow:hidden;overflow-wrap:normal;margin-bottom:6px}
+    .st-key-prism_unified .prism-detail-badges{anchor-name:--prism-detail-brand;min-height:20px;line-height:20px;padding-right:64px;white-space:nowrap}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .prism-detail-badges span{background:transparent;color:#1A1A1A;padding:0;margin:0;border-radius:0;line-height:20px;font-size:12px;white-space:nowrap}
+    .st-key-prism_unified .prism-detail-badges span + span::before{content:'';display:inline-block;height:10px;border-left:1px solid #D9D9DE;margin:0 8px;vertical-align:-1px}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .prism-detail-notes{display:flex;flex-direction:column;letter-spacing:.01em;gap:3px;border-top:1px solid #D9D9DE;margin-top:8px;padding-top:6px}
+    .st-key-prism_unified .prism-detail-note{display:grid;grid-template-columns:52px minmax(0,1fr);column-gap:8px;align-items:baseline}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .prism-detail-note b{font-size:10px;line-height:18px;letter-spacing:.08em}
+    [data-testid="stAppViewContainer"] .st-key-prism_unified .prism-detail-note div{font-size:12px;line-height:18px;overflow-wrap:anywhere}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart)::before{content:'';position:absolute;left:0;right:0;top:51px;height:1px;background:#D9D9DE;z-index:5;pointer-events:none}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-footer{position:absolute;left:0;right:0;bottom:0;height:30px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 12px;box-sizing:border-box;border-top:1px solid #D9D9DE;background:white;color:#666666;font-size:11px;line-height:18px;z-index:6;pointer-events:none}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-footer span:last-child{text-transform:uppercase;white-space:nowrap;letter-spacing:.04em}
+    .st-key-ui_recommendation_chart .updatemenu-item-rect{stroke:transparent!important;stroke-width:0!important;rx:2px;ry:2px;fill:#FFFFFF!important}
+    .st-key-ui_recommendation_chart [data-prism-view="recommended"] .updatemenu-button:not(.updatemenu-button + .updatemenu-button) .updatemenu-item-rect,
+    .st-key-ui_recommendation_chart [data-prism-view="full"] .updatemenu-button + .updatemenu-button .updatemenu-item-rect{fill:#F0F0F2!important;stroke:transparent!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn:is([data-prism-original-title="Zoom"],[data-prism-original-title="Pan"],[data-prism-original-title="Fullscreen"],[data-title="Zoom"],[data-title="Pan"],[data-title="Fullscreen"]){display:none!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn{color:#6B6B72!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn:hover{color:#1A1A1A!important}
+
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"]{margin-bottom:-6px}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) :is([data-testid="stTextInputRootElement"],.react-aria-ComboBox > [role="group"]){border-left-width:0!important;border-right-width:0!important}
+    .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) input{height:38px!important;min-height:38px!important;line-height:38px!important;padding-top:0!important;padding-bottom:0!important;box-sizing:border-box}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart)::after{z-index:8}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar{opacity:1!important;top:15px!important;right:25px!important}
+    .st-key-prism_unified .st-key-ui_rows{padding-top:0;padding-bottom:0}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-group{opacity:1!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn path{fill:#6B6B72!important}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .modebar-btn:hover path{fill:#1A1A1A!important}
     </style>''')
 

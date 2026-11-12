@@ -169,6 +169,21 @@ def detail_panel(identifier,catalog,view,results,api,close,reference):
                     unsafe_allow_html=True)
 
 
+def map_hint(*, recommended):
+    """One accessible tooltip for both the full map and recommendation map."""
+    reset_label = '추천 범위' if recommended else '전체 보기'
+    st.html(
+        '<span class="ui-map-info" tabindex="0" aria-label="지도 조작 안내" '
+        'aria-describedby="prism-map-help">ⓘ'
+        '<span class="ui-map-tooltip" id="prism-map-help" role="tooltip">'
+        '<b>마우스 휠</b><span>확대·축소</span>'
+        '<b>드래그</b><span>영역 확대</span>'
+        '<b>점 클릭</b><span>상세 정보</span>'
+        f'<b>더블클릭·홈</b><span>{reset_label}</span>'
+        '</span></span>'
+    )
+
+
 def markdown_text(value):
     return re.sub(r'([\\*\[\]_`])',r'\\\1',str(value)).replace('\n',' ')
 
@@ -616,6 +631,9 @@ def scoped_styles():
     }
     .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stPlotlyChart"]) > [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"]{gap:12px}
     .st-key-ui_recommendation_chart{position:relative}
+    .st-key-ui_empty_chart{position:relative}
+    .st-key-ui_empty_chart .ui-map-info{left:25px!important}
+    [data-testid="stMainBlockContainer"]:has(.st-key-ui_empty_chart){padding-bottom:0!important}
     /* The recommendation chart paints the WebGL background below its SVG marker groups. */
     .st-key-ui_recommendation_chart .svg-container{background:#fafaf8}
     .st-key-ui_recommendation_chart .svg-container > .gl-container{position:absolute;inset:0;z-index:0;pointer-events:none}
@@ -624,12 +642,12 @@ def scoped_styles():
     .st-key-ui_recommendation_chart .svg-container > .modebar-container{z-index:3}
     .st-key-ui_recommendation_chart .svg-container > .main-svg:last-child{z-index:4}
 
-    .st-key-ui_recommendation_chart > [data-testid="stElementContainer"]:has(.ui-map-info){position:static}
-    .st-key-ui_recommendation_chart .ui-map-info{position:absolute;left:211px;top:14.5px;z-index:20;color:#6b6573;font-size:18px;line-height:24px;cursor:default}
-    .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus){color:#6e7bc9}
-    .st-key-ui_recommendation_chart .ui-map-tooltip{display:none;position:absolute;left:-14px;top:calc(100% + 7px);width:max-content;max-width:300px;grid-template-columns:auto auto;gap:5px 16px;word-break:keep-all;border-radius:10px;padding:12px 14px;background:#302e38;color:#fff;font-size:14px;line-height:1.4;box-shadow:0 6px 18px rgba(0,0,0,.18);pointer-events:none}
-    .st-key-ui_recommendation_chart .ui-map-tooltip::before{content:'';position:absolute;left:19px;top:-7px;border-inline:4px solid transparent;border-bottom:8px solid #302e38}
-    .st-key-ui_recommendation_chart .ui-map-tooltip b{font-weight:600}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) > [data-testid="stElementContainer"]:has(.ui-map-info){position:static}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-info{position:absolute;left:211px;top:14.5px;z-index:20;color:#6b6573;font-size:18px;line-height:24px;cursor:default}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-info:is(:hover,:focus){color:#6e7bc9}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-tooltip{display:none;position:absolute;left:-14px;top:calc(100% + 7px);width:max-content;max-width:300px;grid-template-columns:auto auto;gap:5px 16px;word-break:keep-all;border-radius:10px;padding:12px 14px;background:#302e38;color:#fff;font-size:14px;line-height:1.4;box-shadow:0 6px 18px rgba(0,0,0,.18);pointer-events:none}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-tooltip::before{content:'';position:absolute;left:19px;top:-7px;border-inline:4px solid transparent;border-bottom:8px solid #302e38}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-tooltip b{font-weight:600}
     .st-key-ui_filter_grid [class*="st-key-ui_chip_"]{position:relative}
     .st-key-ui_filter_grid [class*="st-key-ui_chip_"]::after{
         content:var(--accord-description,none);position:absolute;z-index:30;pointer-events:none;
@@ -650,7 +668,7 @@ def scoped_styles():
         position:relative;z-index:30
     }
     .st-key-ui_filter_grid [class*="st-key-ui_chip_"]:has(button:hover){z-index:31}
-    .st-key-ui_recommendation_chart .ui-map-info:is(:hover,:focus) .ui-map-tooltip{display:grid}
+    :is(.st-key-ui_recommendation_chart,.st-key-ui_empty_chart) .ui-map-info:is(:hover,:focus) .ui-map-tooltip{display:grid}
     @media(max-width:700px){.st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:16px}}
     .st-key-integration_picker [data-testid="stCaptionContainer"]{margin-top:8px}
     .st-key-integration_search [data-testid="InputInstructions"]{display:none!important}

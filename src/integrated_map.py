@@ -7,7 +7,7 @@ from .scent_map import interp_color_from_position, radius_to_hsl
 from .catalog_search import find_perfumes
 from .profile_labels import build_label_index, sorted_choices
 from .integrated_ui import (
-    add_rank_ring, add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles,
+    add_rank_ring, add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles, map_hint,
     recommendation_clicks, search_matches_figure, section_colors, show_rank_ring,
     spread_section_labels, subset_figure, accord_chip, accord_chip_style, display_text_color,
 )
@@ -406,8 +406,6 @@ def _render_integrated(api):
     permitted={identifier,*(r['id'] for r in results)} if identifier else None
     left,right = st.columns([3,2],gap='medium')
     with left, st.container(key='integration_chart_slot'):
-        reset_hint = '더블클릭·홈: 추천 범위' if identifier else '더블클릭: 전체 보기'
-        hint = '마우스 휠: 확대·축소 · 드래그: 영역 확대 · 점 클릭: 상세 정보 · ' + reset_hint
         if visible_count==0:st.caption('조건에 맞는 향수가 없습니다')
         chart_config = dict(scrollZoom=True, displaylogo=False, doubleClick='autosize',
                             modeBarButtonsToRemove=['toImage','select2d','lasso2d','autoScale2d'])
@@ -424,22 +422,14 @@ def _render_integrated(api):
                     on_point=lambda: capture_map(point_key, permitted, point_trigger=True),
                 )
                 show_rank_ring(fig, selected_rank)
-                st.html(
-                    '<span class="ui-map-info" tabindex="0" aria-label="지도 조작 안내" '
-                    'aria-describedby="prism-map-help">ⓘ'
-                    '<span class="ui-map-tooltip" id="prism-map-help" role="tooltip">'
-                    '<b>마우스 휠</b><span>확대·축소</span>'
-                    '<b>드래그</b><span>영역 확대</span>'
-                    '<b>점 클릭</b><span>상세 정보</span>'
-                    '<b>더블클릭·홈</b><span>추천 범위</span>'
-                    '</span></span>'
-                )
+                map_hint(recommended=True)
         else:
             map_key = 'integration_map_' + str(st.session_state.get('integration_epoch', 0))
-            st.plotly_chart(fig, key=map_key, width='stretch', theme=None,
-                            on_select=lambda: capture_map(map_key, permitted),
-                            selection_mode='points', config=chart_config)
-            st.caption(hint)
+            with st.container(key='ui_empty_chart', gap=None):
+                st.plotly_chart(fig, key=map_key, width='stretch', theme=None,
+                                on_select=lambda: capture_map(map_key, permitted),
+                                selection_mode='points', config=chart_config)
+                map_hint(recommended=False)
         if filters: st.caption('필터는 배경 분포에 적용됩니다. 기준 향수와 추천 Top 10은 비교를 위해 유지합니다.')
     with right:
         results_slot = st.container(key='integration_results_slot', gap=None)

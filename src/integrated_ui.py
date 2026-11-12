@@ -7,18 +7,19 @@ import base64, re, textwrap
 from io import BytesIO
 import plotly.graph_objects as go
 import streamlit as st
+from .i18n import t, TEXT, font_family, UI_FONT_FALLBACK, install_language_styles
 from .scent_profile import pastel_colors, contrast_ratio, hsl_hex
 from .scent_map import safe_eval, recommendation_marker_size, contrast_text_color
 
 
-DETAIL_ADD_LABEL = "프로필에 추가"
-DETAIL_VIEW_LABEL = "이 향수 기준으로 보기"
-DETAIL_ADDED_LABEL = "프로필에 등록됨"
-DETAIL_FULL_LABEL = "시그니처 최대 3개"
-DETAIL_ADD_HELP = "시그니처 향수로 프로필에 추가"
-DETAIL_ADDED_HELP = "시그니처 향수에서 해제"
-DETAIL_FULL_REASON = "프로필이 가득 찼습니다 (최대 3개)"
-DETAIL_VIEW_HELP = "이 향수 기준으로 다시 검색"
+DETAIL_ADD_LABEL = "heart_add"
+DETAIL_VIEW_LABEL = "rebase"
+DETAIL_ADDED_LABEL = "heart_added"
+DETAIL_FULL_LABEL = "heart_full"
+DETAIL_ADD_HELP = "heart_add_help"
+DETAIL_ADDED_HELP = "heart_remove_help"
+DETAIL_FULL_REASON = "heart_full_help"
+DETAIL_VIEW_HELP = "rebase_help"
 DETAIL_ADD_ICON = ":material/favorite_border:"
 DETAIL_ADDED_ICON = ":material/favorite:"
 DETAIL_VIEW_ICON = ":material/search:"
@@ -97,13 +98,13 @@ def card_html(identifier,catalog,view,results,api):
     edge=hsl_hex(hue,70,84)
     color=str(record['marker_rgb']) if record is not None else '#777777'
     match=next((r for r in results if r['id']==identifier),None)
-    badges=(f'추천 {match["rank"]}위</span> <span>유사도 {match["final_score"]:.4f}' if match else '선택한 향수')
+    badges=(t('rank', rank=match['rank'])+'</span> <span>'+t('similarity', score=match['final_score']) if match else t('selected_perfume'))
     picture=escape(image_source(row,api),quote=True)
     html = f'''<div class="prism-detail-card" data-perfume-id="{escape(str(identifier), quote=True)}" style="background:{palette['background']};color:{palette['foreground']};border-color:{edge}">
     <div class="prism-detail-top">
     <div class="prism-detail-image" style="border-color:{color}"><img src="{picture}" alt=""></div>
     <div class="prism-detail-summary">
-    <div class="prism-detail-name">{escape(str(row['Name']))}</div>
+    <div class="prism-detail-name" title="{escape(str(row['Name']), quote=True)}">{escape(str(row['Name']))}</div>
     <div class="prism-detail-brand">{escape(str(row['Brand']))}</div>
     <div class="prism-detail-accent" style="background:{color}"></div>
     <div class="prism-detail-badges"><span>{badges}</span></div>'''
@@ -113,16 +114,15 @@ def card_html(identifier,catalog,view,results,api):
             outline, pale = section_colors(api.ACCORD_TO_SECTION.get(accord), api)
             chips.append(f'<span style="background:{pale};border-color:{outline}">{escape(accord)}</span>')
         html += '<div class="prism-detail-chips">' + ''.join(chips) + '</div>'
-    html += '</div></div>'
     if record is not None:
         parsed = safe_eval(record['Notes']) if isinstance(record['Notes'], str) else record['Notes']
         html += '<div class="prism-detail-notes">'
         for layer in ['Top', 'Middle', 'Base']:
             notes = [str(v['name']) for v in parsed.get(layer, []) if isinstance(v, dict) and v.get('name')] if isinstance(parsed, dict) else []
-            if notes:
-                html += f'<b>{layer}</b><div>{escape(", ".join(notes))}</div>'
+            value = escape(", ".join(notes)) if notes else '—'
+            html += f'<div class="prism-detail-note"><b>{t({"Top":"top","Middle":"middle","Base":"base_note"}[layer])}</b><div>{value}</div></div>'
         html += '</div>'
-    return html+'</div>',dict(hue=hue,background=palette['background'],foreground=palette['foreground'],contrast=contrast_ratio(palette['background'],palette['foreground']))
+    return html+'</div></div></div>',dict(hue=hue,background=palette['background'],foreground=palette['foreground'],contrast=contrast_ratio(palette['background'],palette['foreground']))
 
 
 def detail_icon_color(marker, background):
@@ -148,14 +148,14 @@ def detail_panel(identifier,catalog,view,results,api,close,reference):
         label = DETAIL_ADDED_LABEL if added else DETAIL_FULL_LABEL if full else DETAIL_ADD_LABEL
         # A stable slot prevents actions from shifting the detail card's delta path.
         with st.container(key='ui_detail_actions', gap=None):
-            st.button(label, key='ui_detail_add', disabled=full and not added,
+            st.button(t(label), key='ui_detail_add', disabled=full and not added,
                       on_click=add_detail_signature, args=(identifier,), width='stretch',
                       icon=DETAIL_ADDED_ICON if added else DETAIL_ADD_ICON,
-                      help=DETAIL_ADDED_HELP if added else DETAIL_FULL_REASON if full else DETAIL_ADD_HELP)
+                      help=t(DETAIL_ADDED_HELP if added else DETAIL_FULL_REASON if full else DETAIL_ADD_HELP))
             name = str(catalog.loc[catalog['_id'].eq(identifier), 'Name'].iloc[0])
-            st.button(DETAIL_VIEW_LABEL, key='ui_detail_reference', width='stretch',
+            st.button(t(DETAIL_VIEW_LABEL), key='ui_detail_reference', width='stretch',
                       on_click=reference, args=(identifier, name),
-                      icon=DETAIL_VIEW_ICON, help=DETAIL_VIEW_HELP)
+                      icon=DETAIL_VIEW_ICON, help=t(DETAIL_VIEW_HELP))
         location = view.loc[view['_id'].eq(identifier)]
         marker = str(location.iloc[0]['marker_rgb']) if not location.empty else '#777777'
         accent = detail_icon_color(marker, palette['background'])
@@ -171,17 +171,14 @@ def detail_panel(identifier,catalog,view,results,api,close,reference):
 
 def map_hint(*, recommended):
     """One accessible tooltip for both the full map and recommendation map."""
-    reset_label = '추천 범위' if recommended else '전체 보기'
-    st.html(
-        '<span class="ui-map-info" tabindex="0" aria-label="지도 조작 안내" '
-        'aria-describedby="prism-map-help">ⓘ'
-        '<span class="ui-map-tooltip" id="prism-map-help" role="tooltip">'
-        '<b>마우스 휠</b><span>확대·축소</span>'
-        '<b>드래그</b><span>영역 확대</span>'
-        '<b>점 클릭</b><span>상세 정보</span>'
-        f'<b>더블클릭·홈</b><span>{reset_label}</span>'
-        '</span></span>'
-    )
+    reset_label = t('range' if recommended else 'full_view')
+    pairs = [('wheel','zoom'),('drag','box_zoom'),('point_click','details')]
+    content = ''.join(f'<b>{t(left)}</b><span>{t(right)}</span>' for left,right in pairs)
+    st.html(f'<span class="ui-map-info" tabindex="0" aria-label="{t("help_label")}" '
+            'aria-describedby="prism-map-help">ⓘ'
+            '<span class="ui-map-tooltip" id="prism-map-help" role="tooltip">'
+            + content + f'<b>{t("reset")}</b><span>{reset_label}</span></span></span>')
+
 
 
 def markdown_text(value):
@@ -216,6 +213,34 @@ def shallow_figure(base):
     figure._data=list(base._data);figure._data_objs=list(base._data_objs)
     figure._layout=deepcopy(base._layout)
     figure._layout_obj=go.Layout(figure._layout);figure._layout_obj._parent=figure
+    return figure
+
+
+def localize_figure(base):
+    """Prepare stable UI metadata; browser localization preserves chart identity."""
+    figure = shallow_figure(base)
+    family = UI_FONT_FALLBACK
+    for i, original in enumerate(base._data):
+        payload = dict(original)
+        for field in ('textfont',):
+            if field in payload: payload[field] = dict(payload[field], family=family)
+        if 'hoverlabel' in payload:
+            label = dict(payload['hoverlabel'])
+            label['font'] = dict(label.get('font', {}), family=family)
+            payload['hoverlabel'] = label
+        cls = go.Scattergl if payload.get('type') == 'scattergl' else go.Scatter
+        trace = cls(payload, _validate=False)
+        figure._data[i] = payload
+        figure._data_objs[i] = trace
+        trace._parent = figure
+        trace._trace_ind = i
+    figure._layout['font'] = dict(figure._layout.get('font', {}), family=family)
+    figure._layout['hoverlabel'] = dict(figure._layout.get('hoverlabel', {}), font=dict(family=family))
+    for annotation in figure._layout.get('annotations', []):
+        annotation['font'] = dict(annotation.get('font', {}), family=family)
+    for menu in figure._layout.get('updatemenus', []):
+        menu['font'] = dict(menu.get('font', {}), family=family)
+        for button, key in zip(menu.get('buttons', []), ('range','full_map')): button['label'] = TEXT[key]['ko']
     return figure
 
 
@@ -259,7 +284,7 @@ def search_matches_figure(base, locations, *, show_label):
         hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]}<extra></extra>',
         hoverlabel=dict(align='left', bgcolor=locations.marker_rgb.tolist(),
                         bordercolor=locations.marker_border.tolist(),
-                        font=dict(family='Georgia', size=14, color=locations.marker_text.tolist())),
+                        font=dict(family=UI_FONT_FALLBACK, size=14, color=locations.marker_text.tolist())),
         selected=dict(marker=dict(opacity=1)), unselected=dict(marker=dict(opacity=1)),
         showlegend=False,
     ))
@@ -269,7 +294,7 @@ def search_matches_figure(base, locations, *, show_label):
             x=row.scent_map_x, y=row.scent_map_y, text=escape(str(row['Name'])),
             showarrow=False, xanchor='right' if row.scent_map_x > 0 else 'left',
             xshift=-12 if row.scent_map_x > 0 else 12, yshift=10, borderpad=3,
-            bgcolor='rgba(255,255,255,.88)', font=dict(family='Georgia', size=12, color='#2c2c2a'),
+            bgcolor='rgba(255,255,255,.88)', font=dict(family=UI_FONT_FALLBACK, size=12, color='#2c2c2a'),
         )
     return figure
 
@@ -292,7 +317,7 @@ def overlay_figure(base, identifier, view):
     name = '<br>'.join(escape(value) for value in textwrap.wrap(str(row['Name']), 32)[:2])
     figure.add_annotation(x=x, y=y, text=name, showarrow=False, xshift=12, yshift=10,
                           xanchor='left', bgcolor='rgba(255,255,255,.88)', borderpad=3,
-                          font=dict(size=12, family='Georgia', color='#2c2c2a'))
+                          font=dict(size=12, family=UI_FONT_FALLBACK, color='#2c2c2a'))
     return figure
 
 
@@ -347,6 +372,11 @@ export default function({data, parentElement, setTriggerValue}) {
     const previousClick = Symbol.for('prism.recommendation.lastClick');
     const atRecommendation = Symbol.for('prism.recommendation.initialRange');
 
+    function positionHelp() {
+        const buttons = graph?.querySelectorAll('.updatemenu-button');
+        const info = host.querySelector('.ui-map-info');
+        if (buttons?.length && info) info.style.left = (buttons[buttons.length-1].getBoundingClientRect().right-host.getBoundingClientRect().left+10)+'px';
+    }
     function trackRange(changes) {
         const endpoints = ['xaxis.range[0]', 'xaxis.range[1]', 'yaxis.range[0]', 'yaxis.range[1]'];
         if (!Object.keys(changes).some(key => /^[xy]axis\.(range|autorange)/.test(key))) return;
@@ -357,8 +387,8 @@ export default function({data, parentElement, setTriggerValue}) {
     }
 
     function resetRecommendation() {
-        const button = [...graph.querySelectorAll('.updatemenu-button')]
-            .find(element => element.textContent.trim() === '추천 범위');
+        positionHelp();
+        const button = graph.querySelector('.updatemenu-button');
         if (!button) return false;
         // A repeated point click at the default range needs no Plotly redraw.
         if (graph[atRecommendation]) return true;
@@ -367,7 +397,7 @@ export default function({data, parentElement, setTriggerValue}) {
     }
 
     function resetFromToolbar(event) {
-        if (event.target.closest('.modebar-btn[data-title="Reset axes"]') && resetRecommendation()) {
+        if (event.target.closest('.modebar-btn:is([data-title="Reset axes"],[data-prism-original-title="Reset axes"])') && resetRecommendation()) {
             event.stopImmediatePropagation();
         }
     }
@@ -477,6 +507,7 @@ export default function({data, parentElement, setTriggerValue}) {
     const selectionSlot = Symbol.for('prism.recommendation.scrolledSelection');
     const defaultScrollSlot = Symbol.for('prism.recommendation.defaultScroll');
     function revealSelection() {
+        positionHelp();
         const list = host.closest('.st-key-prism_unified')?.querySelector('.st-key-ui_rows');
         const buttons = list?.querySelectorAll('button');
         for (const row of buttons ?? []) {
@@ -556,7 +587,7 @@ def spread_section_labels(figure):
             )
 
         dx, dy = next((shift for shift in offsets if fits(*shift)), (0, 0))
-        annotation.update(xshift=dx, yshift=dy, font_family='Georgia, Times New Roman, serif')
+        annotation.update(xshift=dx, yshift=dy, font_family=UI_FONT_FALLBACK)
         if name == 'Woody Amber':
             annotation.update(bgcolor='rgba(250,250,248,0.8)', borderpad=1)
         placed.append((x, y, dx, dy, width, height))
@@ -688,7 +719,7 @@ def scoped_styles():
     .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"]{margin-bottom:5px;min-height:0}
     .st-key-prism_unified :is(.st-key-integration_search,.st-key-integration_base) [data-testid="stWidgetLabel"] p{font-size:16px;font-weight:600;color:#302e38;line-height:1.25}
     .st-key-prism_unified :is(.ui-rec-title h3,.st-key-ui_rows button strong,.prism-detail-badges span,.st-key-ui_filter_toggle code){font-variant-numeric:lining-nums tabular-nums}
-    .st-key-prism_unified :is(.ui-rec-title h3 span,.st-key-ui_rows button code,.st-key-ui_rows button strong:last-of-type,.prism-detail-badges span,.st-key-ui_filter_toggle code){font-family:'Times New Roman',Georgia,serif!important;font-variant-numeric:lining-nums tabular-nums}
+    .st-key-prism_unified :is(.ui-rec-title h3 span,.st-key-ui_rows button code,.st-key-ui_rows button strong:last-of-type,.prism-detail-badges span,.st-key-ui_filter_toggle code){font-family:var(--prism-ui-font),sans-serif!important;font-variant-numeric:lining-nums tabular-nums}
     .st-key-prism_unified .st-key-ui_rows button code{font-size:inherit;font-weight:inherit;color:inherit;background:transparent;padding:0}
     .st-key-prism_unified .st-key-ui_filter_shell{border:1px solid #e2e1e8;border-radius:12px;background:white;gap:0}
     .st-key-prism_unified .st-key-ui_filter_actions{gap:8px;align-items:center}
@@ -725,3 +756,4 @@ def scoped_styles():
     .st-key-prism_unified [class*="st-key-ui_chip_"] button[data-testid^="stBaseButton"]{min-height:28px;border-radius:16px;padding:2px 8px;background:white;border:1px solid #dddce4;color:#625f6a;font-size:14px}
     .st-key-prism_unified [class*="st-key-ui_chip_"] button[kind="primary"]{background:var(--section-pale);border-color:var(--section-ink);color:#2c2c2a}
     </style>''')
+

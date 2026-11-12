@@ -80,10 +80,10 @@ def _profile_png_cached(profile, signatures, version, bottle_images, orientation
 
 
 def profile_png(profile, signatures, version, orientation='horizontal'):
-    from .profile_card import profile_card_date
+    from .profile_card import profile_card_date, PROFILE_FONT_VERSION
 
     # Include image bytes in the PNG key so an earlier missing image cannot stick.
-    return _profile_png_cached(profile, signatures, version,
+    return _profile_png_cached(profile, signatures, (version, PROFILE_FONT_VERSION),
                                [fetch_bottle(row['image_url']) for row in signatures], orientation, profile_card_date())
 
 

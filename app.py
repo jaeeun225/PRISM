@@ -245,7 +245,7 @@ def build_figure(df: pd.DataFrame, section_angles: dict) -> go.Figure:
         marker=dict(color=point_colors, size=5, opacity=1),
         hovertext=df["tooltip"], hovertemplate="%{hovertext}<extra></extra>",
         hoverlabel=dict(align="left", bgcolor=point_colors, bordercolor=point_borders,
-                        font=dict(size=14, color=point_text_colors, family="Georgia, Times New Roman, serif")),
+                        font=dict(size=14, color=point_text_colors, family="Pretendard Variable, Pretendard, Noto Sans KR, sans-serif")),
         showlegend=False,
     ))
     for section, angles in section_angles.items():
@@ -276,7 +276,7 @@ def build_figure(df: pd.DataFrame, section_angles: dict) -> go.Figure:
         showlegend=False,
         hovermode="closest",
         hoverdistance=20,
-        hoverlabel=dict(align="left", font=dict(size=14, family="Georgia, Times New Roman, serif")),
+        hoverlabel=dict(align="left", font=dict(size=14, family="Pretendard Variable, Pretendard, Noto Sans KR, sans-serif")),
         dragmode="zoom",
         uirevision="prism-scent-map",
         xaxis=dict(visible=False, range=[-1.45, 1.45], constrain="domain"),
@@ -303,7 +303,7 @@ def fast_figure(view: pd.DataFrame, template: dict, query: str) -> go.Figure:
                     hoverlabel=dict(align="left", bgcolor=rows["marker_rgb"].tolist(),
                                     bordercolor=rows["marker_border"].tolist(),
                                     font=dict(size=14, color=rows["marker_text"].tolist(),
-                                              family="Georgia, Times New Roman, serif")), showlegend=False)
+                                              family="Pretendard Variable, Pretendard, Noto Sans KR, sans-serif")), showlegend=False)
     fig = go.Figure(data=[trace(view)], layout=template["layout"], _validate=False)
     if query.strip():
         mask = (view.Name.fillna("").str.contains(query.strip(), case=False, regex=False) |
@@ -387,6 +387,7 @@ def navigate(page: str, *, home: bool = False) -> None:
 
 def render_navigation() -> None:
     from base64 import b64encode
+    from src.i18n import install_language_styles, t, language, set_language
 
     marks = {
         "A": "prism-spiral.svg",
@@ -408,13 +409,13 @@ def render_navigation() -> None:
     st.html(
         "<style>"
         "[data-baseweb='tag'], [data-baseweb*='tag'], [data-testid*='MultiSelectTag'], [class*='st-key-accord_selector'] [data-baseweb='tag'], [data-baseweb='tag'] span[title], [role='button'][aria-label*='close by backspace'], [aria-label*=', close by backspace'] {display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;}"
-        "html, body, [data-testid='stAppViewContainer'], [data-testid='stAppViewContainer'] * {font-family:Georgia,'Times New Roman',serif!important;}"
-        "[data-baseweb='menu'], [data-baseweb='menu'] *, [data-baseweb='popover'], [data-baseweb='popover'] *, [data-baseweb='tooltip'], [data-baseweb='tooltip'] *, [role='listbox'], [role='listbox'] *, [role='option'], [role='tooltip'], [role='tooltip'] * {font-family:Georgia,'Times New Roman',serif!important;}"
+        "html, body, [data-testid='stAppViewContainer'], [data-testid='stAppViewContainer'] *:not(.js-plotly-plot,.js-plotly-plot *) {font-family:var(--prism-ui-font),sans-serif!important;}"
+        "[data-baseweb='menu'], [data-baseweb='menu'] *, [data-baseweb='popover'], [data-baseweb='popover'] *, [data-baseweb='tooltip'], [data-baseweb='tooltip'] *, [role='listbox'], [role='listbox'] *, [role='option'], [role='tooltip'], [role='tooltip'] * {font-family:var(--prism-ui-font),sans-serif!important;}"
         f"{nav_button} {{background:transparent!important;border:0!important;box-shadow:none!important;border-radius:0!important;color:#333!important;padding:0.25rem 0.15rem!important;}}"
-        f"{nav_button} p {{font-family:Georgia,'Times New Roman',serif!important;font-size:clamp(16px,1.8vw,22px)!important;font-weight:600;}}"
+        f"{nav_button} p {{font-family:var(--prism-ui-font),sans-serif!important;font-size:clamp(16px,1.8vw,22px)!important;font-weight:600;}}"
         f"{nav_button}[kind='primary'], {nav_button}:hover {{color:#000!important;}}"
         f"{menu_button} p {{font-size:22px!important;line-height:1.2!important;margin:0;position:relative;top:0.7px;}}"
-        f"{menu_button}[kind='primary'] p {{font-weight:800!important;}}"
+        f"{menu_button}[kind='primary'] p {{font-weight:600!important;}}"
         f"{nav_button}:focus-visible {{outline:1px solid currentColor!important;outline-offset:3px;}}"
         ".st-key-prism_nav {position:relative;justify-content:space-between!important;align-items:center!important;gap:8px 20px!important;height:64px;min-height:64px;box-sizing:border-box;padding-bottom:0;padding-left:32px;padding-right:32px;margin-left:-80px;margin-right:-80px;width:calc(100% + 160px)!important;min-width:calc(100% + 160px)!important;max-width:none!important;flex-shrink:0;}"
         ".st-key-prism_nav::after {content:'';position:absolute;left:0;bottom:0;width:100%;height:1px;background:#8f8fa0;}"
@@ -431,12 +432,21 @@ def render_navigation() -> None:
                       vertical_alignment="center"):
         st.button("PRISM", key="nav_home", width="content",
                   on_click=navigate, args=("scent_map",), kwargs={"home": True})
-        with st.container(key="prism_nav_tabs", width="content", horizontal=True,
-                          horizontal_alignment="right"):
-            for page, label in [("scent_map", "Interactive Scent Map"), ("profile", "My Profile")]:
-                st.button(label, key=f"nav_{page}", width="content",
-                          type="primary" if st.session_state.current_page == page else "secondary",
-                          on_click=navigate, args=(page,))
+        with st.container(key="prism_nav_right", width="content", horizontal=True, vertical_alignment="center"):
+            with st.container(key="prism_nav_tabs", width="content", horizontal=True,
+                              horizontal_alignment="right"):
+                for page, label in [("scent_map", t('nav_map')), ("profile", t('nav_profile'))]:
+                    st.button(label, key=f"nav_{page}", width="content",
+                              type="primary" if st.session_state.current_page == page else "secondary",
+                              on_click=navigate, args=(page,))
+            with st.container(key="prism_lang", width="content", horizontal=True, vertical_alignment="center"):
+                st.button('KO', key='lang_ko', type='primary' if language() == 'ko' else 'secondary',
+                          on_click=set_language, args=('ko',))
+                st.html('<span class="prism-lang-divider" aria-hidden="true"></span>')
+                st.button('EN', key='lang_en', type='primary' if language() == 'en' else 'secondary',
+                          on_click=set_language, args=('en',))
+    install_language_styles()
+
 
 
 def install_page_transition_guard() -> None:
@@ -475,8 +485,9 @@ def install_page_transition_guard() -> None:
                     delete root.dataset.prismTransition;
                 }
                 const clear = document.querySelector('.st-key-integration_clear button');
-                if (clear && clear.getAttribute('aria-label') !== '검색어 지우기') {
-                    clear.setAttribute('aria-label', '검색어 지우기');
+                const clearLabel = clear?.textContent?.trim();
+                if (clear && clear.getAttribute('aria-label') !== clearLabel) {
+                    clear.setAttribute('aria-label', clearLabel);
                 }
             };
             new MutationObserver(sync).observe(document.body, {
@@ -498,9 +509,9 @@ def main() -> None:
         "[data-testid='stHeader'], [data-testid='stToolbar'], [data-testid='stDecoration'] {display:none!important;}"
         "[data-testid='stMainBlockContainer'] {padding-top:0;padding-left:80px;padding-right:80px;}"
         "[data-baseweb='tag'], [data-testid='stMultiSelectTag'] "
-        "{display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;background:#6E7BC9!important;color:#FFFFFF!important;border:1px solid #5967B5!important;border-radius:999px!important;padding:0.2rem 0.7rem!important;font-family:Georgia,'Times New Roman',serif!important;}"
-        "[data-baseweb='tag'] *, [data-testid='stMultiSelectTag'] * {font-family:Georgia,'Times New Roman',serif!important;color:#FFFFFF!important;}"
-        "[data-baseweb='select'] input::placeholder {opacity:1!important;color:#8a8a8a!important;font-family:Georgia,'Times New Roman',serif!important;}"
+        "{display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;transition:none!important;background:#6E7BC9!important;color:#FFFFFF!important;border:1px solid #5967B5!important;border-radius:999px!important;padding:0.2rem 0.7rem!important;font-family:var(--prism-ui-font),sans-serif!important;}"
+        "[data-baseweb='tag'] *, [data-testid='stMultiSelectTag'] * {font-family:var(--prism-ui-font),sans-serif!important;color:#FFFFFF!important;}"
+        "[data-baseweb='select'] input::placeholder {opacity:1!important;color:#8a8a8a!important;font-family:var(--prism-ui-font),sans-serif!important;}"
         "[data-baseweb='select'] input[placeholder] {min-width:8rem!important;}"
         "</style>",
     )
@@ -518,7 +529,8 @@ def main() -> None:
     elif st.session_state.current_page == "profile":
         from src.profile_page import render_profile
         with st.container(key="prism_page_profile"):
-            render_profile(
+            from src.i18n import render_localized_profile
+            render_localized_profile(render_profile,
                 settings_factory=data_settings,
                 recommendation_loader=get_recommendation_cache,
                 recommendation_logic=RECOMMENDATION_LOGIC_VERSION,

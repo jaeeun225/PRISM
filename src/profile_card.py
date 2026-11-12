@@ -64,6 +64,30 @@ def _serif_font_cached(size, bold=False, font_dirs=None):
         return ImageFont.load_default()
 
 
+PROFILE_FONT_VERSION = 'josefin-sans-400-700-v1'
+
+
+@lru_cache(maxsize=1)
+def _warn_card_font():
+    logging.getLogger(__name__).warning('Bundled Josefin Sans unavailable; using existing font fallback.')
+
+
+@lru_cache(maxsize=64)
+def _card_font_cached(size, bold, font_dirs):
+    path = Path(__file__).resolve().parents[1]/'assets/fonts'/('JosefinSans-Bold.ttf' if bold else 'JosefinSans-Regular.ttf')
+    try:
+        # These official static faces use lining figures by default (no onum/lnum substitution).
+        return ImageFont.truetype(str(path), size)
+    except (OSError, ValueError):
+        _warn_card_font()
+        return serif_font(size, bold, font_dirs)
+
+
+def card_font(size, bold=False, font_dirs=None):
+    directories = None if font_dirs is None else tuple(str(path) for path in font_dirs)
+    return _card_font_cached(size, bold, directories)
+
+
 def _wrap(text, font, width):
     words = str(text or '').split()
     lines, line = [], ''
@@ -155,7 +179,7 @@ def render_card_png(profile, signatures, bottle_images, font_dirs=None, orientat
     bg, fg = profile['background'], profile['foreground']
     image = Image.new('RGB', (w, h), bg)
     d = ImageDraw.Draw(image)
-    font = lambda size, bold=False: serif_font(size, bold, font_dirs)
+    font = lambda size, bold=False: card_font(size, bold, font_dirs)
     ornament = _mix(bg, fg, .22)
     d.rounded_rectangle((35, 35, w-35, h-35), radius=25, outline=ornament, width=2)
     def text(x, y, value, size=28, bold=False, anchor=None):

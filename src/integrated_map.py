@@ -1,5 +1,6 @@
 """Unified UI only. Existing artifact, ranking and highlight functions are reused."""
 import math
+from .i18n import t, TEXT, UI_FONT_FALLBACK, accord_description, install_language_styles, install_chart_language
 import streamlit as st
 import plotly.graph_objects as go
 from html import escape
@@ -7,7 +8,7 @@ from .scent_map import interp_color_from_position, radius_to_hsl
 from .catalog_search import find_perfumes
 from .profile_labels import build_label_index, sorted_choices
 from .integrated_ui import (
-    add_rank_ring, add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles, map_hint,
+    localize_figure, add_rank_ring, add_search_halo, detail_panel, overlay_figure, recommendation_rows, scoped_styles, map_hint,
     recommendation_clicks, search_matches_figure, section_colors, show_rank_ring,
     spread_section_labels, subset_figure, accord_chip, accord_chip_style, display_text_color,
 )
@@ -119,7 +120,7 @@ def figure_for(settings, identifier, filters, stage, _api):
             ref=base.iloc[0]
             fig.add_annotation(x=ref.scent_map_x,y=ref.scent_map_y,text=escape(str(ref['Name'])),
                                showarrow=False,xanchor='right',xshift=-10,yshift=8,borderpad=3,
-                               bgcolor='rgba(255,255,255,.88)',font=dict(family='Georgia',size=12,color='#2c2c2a'))
+                               bgcolor='rgba(255,255,255,.88)',font=dict(family=UI_FONT_FALLBACK,size=12,color='#2c2c2a'))
             # Include the reference point without changing recommendation jitter.
             for axis, column in [('xaxis','scent_map_x'),('yaxis','scent_map_y')]:
                 limits = list(fig.layout[axis].range or [-1.3,1.3])
@@ -134,7 +135,7 @@ def figure_for(settings, identifier, filters, stage, _api):
         bg = fig.data[0]
         bg.hovertext = None
         bg.hoverlabel.align = 'left'
-        bg.hoverlabel.font.family = 'Georgia'
+        bg.hoverlabel.font.family = UI_FONT_FALLBACK
         bg.hoverlabel.font.size = 14
         bg.customdata = None if identifier else list(zip(visible['Name'],visible['Brand'],visible['_id']))
         bg.hovertemplate = '<b>%{customdata[0]}</b><br>%{customdata[1]}<extra></extra>'
@@ -208,10 +209,10 @@ def figure_for(settings, identifier, filters, stage, _api):
             x=0.0, y=1.0, xanchor='left', yanchor='top',
             pad=dict(t=0, r=0, b=0, l=0), bgcolor='#ffffff',
             bordercolor='#dedce8', borderwidth=1,
-            font=dict(family='Georgia', size=14, color='#38364a'),
+            font=dict(family=UI_FONT_FALLBACK, size=14, color='#38364a'),
             buttons=[
-                view_button('추천 범위', fig.layout.xaxis.range, fig.layout.yaxis.range),
-                view_button('전체 지도', full_range, full_range),
+                view_button(TEXT['range']['ko'], fig.layout.xaxis.range, fig.layout.yaxis.range),
+                view_button(TEXT['full_map']['ko'], full_range, full_range),
             ],
         )])
     else:
@@ -276,23 +277,23 @@ def filter_editor(api,groups):
     draft={a for i,_ in enumerate(groups) for a in st.session_state.get(f'integration_draft_{i}',[])}
     has_changes = draft != active
     with st.container(horizontal=True,vertical_alignment='center',key='ui_filter_actions'):
-        st.button('전체 선택',key='ui_filter_all',on_click=set_all_groups,args=(groups,True))
-        st.button('전체 해제',key='ui_filter_clear',on_click=set_all_groups,args=(groups,False))
-        if st.button('적용',type='primary' if has_changes else 'secondary',key='ui_filter_apply'):
+        st.button(t('select_all'),key='ui_filter_all',on_click=set_all_groups,args=(groups,True))
+        st.button(t('clear_all'),key='ui_filter_clear',on_click=set_all_groups,args=(groups,False))
+        if st.button(t('apply'),type='primary' if has_changes else 'secondary',key='ui_filter_apply'):
             apply_groups(groups)
             st.rerun(scope='app')
         with st.container(key='ui_filter_hint',width='content'):
             if has_changes:
-                st.html('<span class="ui-filter-pending" role="status">변경 사항이 있습니다 — 적용을 눌러주세요</span>')
+                st.html('<span class="ui-filter-pending" role="status">'+t('pending')+'</span>')
             else:
-                st.caption('OR 조건 · 미선택 시 전체 표시')
+                st.caption(t('or_hint'))
     css=[]
     for i,(section,_) in enumerate(groups):
         ink,pale=section_colors(section,api)
         section_class = f'.st-key-prism_unified .st-key-ui_section_{i}'
         css.append(f'{section_class}{{--section-ink:{ink};--section-pale:{pale}}}')
         for accord in groups[i][1]:
-            description = ACCORD_DESCRIPTIONS.get(accord)
+            description = accord_description(accord)
             if description:
                 css.append(accord_chip_style(section_class, accord, description))
     st.html('<style>'+''.join(css)+'</style>')
@@ -305,8 +306,8 @@ def filter_editor(api,groups):
                 section,options=groups[i]
                 with cols[i-start],st.container(key=f'ui_section_{i}'):
                     with st.container(horizontal=True,vertical_alignment='center',key=f'ui_heading_{i}'):
-                        st.markdown(f'<span class="ui-section-title"><span>●</span> <b>{escape(section)}</b></span>',unsafe_allow_html=True)
-                        st.button('섹션 전체',key=f'ui_group_{i}',type='tertiary',on_click=toggle_group,args=(i,options))
+                        st.markdown(f'<span class="ui-section-title"><span>●</span> <b>{escape(t("other_section") if section == "기타 (지도 미반영)" else section)}</b></span>',unsafe_allow_html=True)
+                        st.button(t('section_all'),key=f'ui_group_{i}',type='tertiary',on_click=toggle_group,args=(i,options))
                     with st.container(horizontal=True,key=f'ui_chips_{i}'):
                         chosen=set(st.session_state.get(f'integration_draft_{i}',[]))
                         for accord in options:
@@ -327,10 +328,10 @@ def filters_ui(api,settings,view):
     filters=() if not active or active==all_options else tuple(sorted(active))
     count=len(visible_rows(settings,api.MAP_LOGIC_VERSION,filters,view))
     opened=st.session_state.get('ui_filter_open',False)
-    status='전체 선택' if not filters else f'{len(filters)}개 어코드 선택'
+    status=t('select_all') if not filters else t('selected_count', count=len(filters))
     with st.container(key='ui_filter_shell'):
-        title = ('▾' if opened else '▸') + ' 어코드 필터'
-        summary = f'현재: {status} · 표시 중 {count:,} / {len(view):,}개'
+        title = ('▾' if opened else '▸') + ' ' + t('filter')
+        summary = t('shown', shown=count, total=len(view))
         st.button(f'{title} `{summary}`', type='tertiary', key='ui_filter_toggle',
                   width='stretch', on_click=toggle_filter)
         if opened:
@@ -343,6 +344,8 @@ def filters_ui(api,settings,view):
 def render_integrated(api):
     with st.container(key="prism_unified"):
         scoped_styles()
+        install_language_styles()
+        install_chart_language()
         _render_integrated(api)
 
 
@@ -355,7 +358,7 @@ def _render_integrated(api):
         try:
             settings = tuple(sorted(api.data_settings().items()))
             if bookmark_ids:
-                with st.spinner('지도를 불러오는 중…'):
+                with st.spinner(t('map_loading')):
                     catalog = api.get_recommendation_cache(settings, api.RECOMMENDATION_LOGIC_VERSION)[0]
                 indexed = catalog.set_index('_id')
                 identifier = next((value for value in bookmark_ids if value in indexed.index), None)
@@ -365,15 +368,15 @@ def _render_integrated(api):
             st.session_state.integration_route_ready = True
             search_column, selection_column = st.columns([3, 2], gap='medium')
             with search_column, st.container(key='integration_search_box', gap=None):
-                query = st.text_input('향수 이름 또는 브랜드 검색', key='integration_search',
-                                      placeholder='향수 이름 또는 브랜드 입력 후 Enter', on_change=reset_search)
-                st.button('검색어 지우기', key='integration_clear', on_click=reset_map)
-            with st.spinner('지도를 불러오는 중…'):
+                query = st.text_input(t('search'), key='integration_search',
+                                      placeholder=t('placeholder'), on_change=reset_search)
+                st.button(t('clear_search'), key='integration_clear', on_click=reset_map)
+            with st.spinner(t('map_loading')):
                 display = display_cache(settings, api.MAP_LOGIC_VERSION, DISPLAY_SATURATION_EXPONENT, api)
                 if catalog is None and (query.strip() or detail):
                     catalog = api.get_recommendation_cache(settings, api.RECOMMENDATION_LOGIC_VERSION)[0]
         except api.DataLoadError as exc:
-            st.error(str(exc))
+            st.error(t('load_error'))
             return
         identifier = None
         search_ids = ()
@@ -385,15 +388,15 @@ def _render_integrated(api):
             ordered_ids = sorted_choices(index,choices['_id'])
             if labels:
                 with selection_column:
-                    identifier = st.selectbox('기준 향수 선택',ordered_ids,index=None,format_func=labels.get,
-                                              key='integration_base',on_change=select_reference)
+                    identifier = st.selectbox(t('base'),ordered_ids,index=None,format_func=labels.get,
+                                              key='integration_base',on_change=select_reference,placeholder=t('choose_option'))
                 if identifier is None:
                     if len(choices) <= SEARCH_MARKER_LIMIT:
                         search_ids = ordered_ids
                     else:
-                        search_message.caption(f'{len(choices):,}개 일치 — 목록에서 선택하세요')
+                        search_message.caption(t('matches', count=len(choices)))
             else:
-                search_message.caption('일치하는 향수가 없습니다.')
+                search_message.caption(t('no_results'))
     filters,visible_count=filters_ui(api,settings,display['view'])
     results = ranked(settings,identifier,api,api.RECOMMENDATION_LOGIC_VERSION) if identifier else []
     detail=st.session_state.get('integration_detail')
@@ -403,10 +406,11 @@ def _render_integrated(api):
         matches = api.get_coordinates([i for i in search_ids if i != detail], display['view'])
         base_figure = search_matches_figure(base_figure, matches, show_label=len(search_ids) == 1)
     fig = base_figure if identifier else overlay_figure(base_figure, detail, display['view'])
+    fig = localize_figure(fig)
     permitted={identifier,*(r['id'] for r in results)} if identifier else None
     left,right = st.columns([3,2],gap='medium')
     with left, st.container(key='integration_chart_slot'):
-        if visible_count==0:st.caption('조건에 맞는 향수가 없습니다')
+        if visible_count==0:st.caption(t('filter_empty'))
         chart_config = dict(scrollZoom=True, displaylogo=False, doubleClick='autosize',
                             modeBarButtonsToRemove=['toImage','select2d','lasso2d','autoScale2d'])
         if identifier:
@@ -430,18 +434,18 @@ def _render_integrated(api):
                                 on_select=lambda: capture_map(map_key, permitted),
                                 selection_mode='points', config=chart_config)
                 map_hint(recommended=False)
-        if filters: st.caption('필터는 배경 분포에 적용됩니다. 기준 향수와 추천 Top 10은 비교를 위해 유지합니다.')
+        if filters: st.caption(t('filter_note'))
     with right:
         results_slot = st.container(key='integration_results_slot', gap=None)
         detail_slot = st.container(key='integration_detail_slot', gap=None)
         if results:
             with results_slot, st.container(key='ui_recommendation_heading', gap=None):
                 name = escape(str(catalog.set_index('_id').loc[identifier, 'Name']))
-                st.markdown(f'<div class="ui-rec-title"><h3>추천 Top <span>10</span></h3>'
-                            f'<p>기준: {name}</p></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="ui-rec-title"><h3>{t("recommend_title")}</h3>'
+                            f'<p>{t("base_caption", name=name)}</p></div>', unsafe_allow_html=True)
                 recommendation_rows(results,catalog,detail,api,select_detail)
         elif not detail:
-            results_slot.caption('향수를 검색하고 기준 향수를 선택하면 추천 Top 10이 표시됩니다.')
+            results_slot.caption(t('choose_base'))
         if catalog is not None and detail and catalog['_id'].eq(detail).any():
             with detail_slot:
                 detail_panel(detail,catalog,display['view'],results,api,clear_details,select_reference)

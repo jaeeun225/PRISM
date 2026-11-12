@@ -15,16 +15,25 @@ DETAIL_ADD_LABEL = "프로필에 추가"
 DETAIL_VIEW_LABEL = "이 향수 기준으로 보기"
 DETAIL_ADDED_LABEL = "프로필에 등록됨"
 DETAIL_FULL_LABEL = "시그니처 최대 3개"
-DETAIL_FULL_REASON = "프로필에서 삭제 후 추가할 수 있습니다."
+DETAIL_ADD_HELP = "시그니처 향수로 프로필에 추가"
+DETAIL_ADDED_HELP = "시그니처 향수에서 해제"
+DETAIL_FULL_REASON = "프로필이 가득 찼습니다 (최대 3개)"
+DETAIL_VIEW_HELP = "이 향수 기준으로 다시 검색"
+DETAIL_ADD_ICON = ":material/favorite_border:"
+DETAIL_ADDED_ICON = ":material/favorite:"
+DETAIL_VIEW_ICON = ":material/search:"
 
 
 def add_detail_signature(identifier):
-    """Reuse the profile add callback without navigating away from the map."""
-    from .profile_page import add_signature
+    """Reuse profile add/remove callbacks without navigating away from the map."""
+    from .profile_page import add_signature, remove_signature
     query = {key: st.query_params.get_all(key) for key in st.query_params}
     route = st.session_state.get('_prism_route_seen')
-    st.session_state.detail_signature_candidate = identifier
-    add_signature('detail_signature_candidate', (identifier,))
+    if identifier in st.session_state.get('profile_signatures', []):
+        remove_signature(identifier)
+    else:
+        st.session_state.detail_signature_candidate = identifier
+        add_signature('detail_signature_candidate', (identifier,))
     st.query_params.clear()
     for key, values in query.items():
         st.query_params[key] = values
@@ -116,6 +125,17 @@ def card_html(identifier,catalog,view,results,api):
     return html+'</div>',dict(hue=hue,background=palette['background'],foreground=palette['foreground'],contrast=contrast_ratio(palette['background'],palette['foreground']))
 
 
+def detail_icon_color(marker, background):
+    """Darken only the action glyph, preserving hue and 3:1 contrast."""
+    channels = ([int(marker[index:index + 2], 16) for index in (1, 3, 5)]
+                if marker.startswith('#') else [int(v) for v in re.findall(r'\d+', marker)[:3]])
+    for step in range(1, 21):
+        color = '#' + ''.join(f'{round(value * (1 - step * .05)):02x}' for value in channels)
+        if contrast_ratio(background, color) >= 3:
+            return color
+    return '#000000'
+
+
 def detail_panel(identifier,catalog,view,results,api,close,reference):
     with st.container(key='ui_detail'):
         st.button('×',key='ui_close',on_click=close,type='tertiary')
@@ -128,14 +148,24 @@ def detail_panel(identifier,catalog,view,results,api,close,reference):
         label = DETAIL_ADDED_LABEL if added else DETAIL_FULL_LABEL if full else DETAIL_ADD_LABEL
         # A stable slot prevents actions from shifting the detail card's delta path.
         with st.container(key='ui_detail_actions', gap=None):
-            st.button(label, key='ui_detail_add', disabled=added or full,
+            st.button(label, key='ui_detail_add', disabled=full and not added,
                       on_click=add_detail_signature, args=(identifier,), width='stretch',
-                      help=DETAIL_FULL_REASON if full and not added else None)
+                      icon=DETAIL_ADDED_ICON if added else DETAIL_ADD_ICON,
+                      help=DETAIL_ADDED_HELP if added else DETAIL_FULL_REASON if full else DETAIL_ADD_HELP)
             name = str(catalog.loc[catalog['_id'].eq(identifier), 'Name'].iloc[0])
             st.button(DETAIL_VIEW_LABEL, key='ui_detail_reference', width='stretch',
-                      on_click=reference, args=(identifier, name))
-        st.markdown(f"<style>.st-key-ui_detail_actions button{{background:{palette['background']};"
-                    f"color:{palette['foreground']};border-color:{palette['foreground']}66}}</style>",
+                      on_click=reference, args=(identifier, name),
+                      icon=DETAIL_VIEW_ICON, help=DETAIL_VIEW_HELP)
+        location = view.loc[view['_id'].eq(identifier)]
+        marker = str(location.iloc[0]['marker_rgb']) if not location.empty else '#777777'
+        accent = detail_icon_color(marker, palette['background'])
+        rgb = ','.join(str(int(accent[index:index + 2], 16)) for index in (1, 3, 5))
+        st.markdown(f"<style>.st-key-ui_detail_actions{{--detail-action-color:{accent};"
+                    f"--detail-action-hover:rgba({rgb},.2);--detail-disabled-opacity:{1 if added else .35}}}"
+                    f".st-key-prism_unified .st-key-ui_detail_actions .st-key-ui_detail_add [data-testid=stIconMaterial]{{font-variation-settings:"
+                    f"'FILL' {1 if added else 0},'wght' 600,'GRAD' 0,'opsz' 28;"
+                    f"color:{'transparent' if added else 'var(--detail-action-color)'}!important;"
+                    f"--detail-heart-filled:{1 if added else 0}}}</style>",
                     unsafe_allow_html=True)
 
 
@@ -542,16 +572,24 @@ def scoped_styles():
     .st-key-prism_unified .prism-detail-image img{display:block;width:120px;height:126px;object-fit:contain}
     .st-key-prism_unified .prism-detail-summary{flex:1;min-width:0;padding-right:24px}
     .st-key-prism_unified .prism-detail-name{font-size:22px;font-weight:bold;line-height:1.15;overflow-wrap:anywhere}
-    .st-key-prism_unified .prism-detail-brand{font-size:13px;color:#61606b;margin:2px 0 4px}
+    .st-key-prism_unified .prism-detail-brand{font-size:13px;color:#61606b;margin:2px 0 4px;anchor-name:--prism-detail-brand;padding-right:68px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .st-key-prism_unified .prism-detail-accent{height:2px;margin-bottom:4px}
     .st-key-prism_unified .prism-detail-badges span{background:#e9e7f8;color:#4e5896;border-radius:14px;padding:2px 7px;font-size:12px;display:inline-block;margin:1px 2px 0 0}
     .st-key-prism_unified .prism-detail-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
     .st-key-prism_unified .prism-detail-chips span{border:1px solid;border-radius:16px;padding:1px 6px;color:#2c2c2a;font-size:12px}
     .st-key-prism_unified .prism-detail-notes{display:grid;grid-template-columns:52px 1fr;gap:4px 8px;font-size:13px;line-height:1.35;margin-top:6px}
-    .st-key-prism_unified .st-key-ui_detail_actions{position:absolute;left:16px;bottom:18px;width:130px;gap:4px;z-index:2}
-    .st-key-prism_unified .st-key-ui_detail_actions button{min-height:25px;height:25px;padding:0 3px;border-radius:7px}
-    .st-key-prism_unified .st-key-ui_detail_actions button p{font-size:11px!important;line-height:18px;white-space:nowrap}
-    .st-key-prism_unified .prism-detail-notes{margin-left:142px;min-height:58px}
+    .st-key-prism_unified .st-key-ui_detail{anchor-scope:--prism-detail-brand}
+    .st-key-prism_unified .st-key-ui_detail_actions{position:absolute;position-anchor:--prism-detail-brand;top:anchor(center);right:41px;transform:translateY(-50%);width:58px;height:28px;flex-direction:row;align-items:center;gap:2px;z-index:2}
+    .st-key-prism_unified .st-key-ui_detail_actions > div{width:28px!important;flex:0 0 28px}
+    .st-key-prism_unified .st-key-ui_detail_actions button{position:relative;display:flex!important;align-items:center!important;justify-content:center!important;width:28px!important;min-width:28px!important;max-width:28px!important;min-height:28px!important;max-height:28px!important;height:28px!important;box-sizing:border-box;margin:0!important;padding:0!important;border:0!important;border-radius:50%;box-shadow:none!important;background:transparent!important;color:var(--detail-action-color)!important;gap:0!important}
+    .st-key-prism_unified .st-key-ui_detail_actions button:is(:hover,:focus-visible):not(:disabled){background:var(--detail-action-hover)!important}
+    .st-key-prism_unified .st-key-ui_detail_actions button:focus-visible{outline:2px solid var(--detail-action-color);outline-offset:1px}
+    .st-key-prism_unified .st-key-ui_detail_actions button:disabled{opacity:var(--detail-disabled-opacity)}
+    .st-key-prism_unified .st-key-ui_detail_actions button [data-testid=stMarkdownContainer]{position:absolute!important;width:0!important;min-width:0!important;height:0;overflow:hidden;clip-path:inset(50%);margin:0!important;padding:0!important;flex:0 0 0!important}
+    .st-key-prism_unified .st-key-ui_detail_actions button p{width:0;height:0;margin:0;padding:0;overflow:hidden}
+    .st-key-prism_unified .st-key-ui_detail_actions [data-testid=stIconMaterial]{font-family:'Material Symbols Rounded'!important;font-size:18px!important;width:18px!important;height:18px!important;min-width:18px;max-width:18px;flex:0 0 18px;margin:0!important;padding:0!important;position:relative;display:inline-flex;align-items:center;justify-content:center;line-height:18px!important;transform:none;font-variation-settings:'FILL' 0,'wght' 600,'GRAD' 0,'opsz' 28}
+    /* The bundled Material font has no variable FILL axis; use a solid mask only when registered. */
+    .st-key-prism_unified .st-key-ui_detail_add [data-testid=stIconMaterial]::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:var(--detail-heart-filled,0);background:var(--detail-action-color);mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z'/%3E%3C/svg%3E") center/contain no-repeat}
     .st-key-prism_unified .prism-detail-notes b{color:#505b9c;white-space:nowrap}
     .st-key-prism_unified{gap:16px}
     .st-key-prism_unified [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] :is(.st-key-integration_search,[data-testid="stPlotlyChart"])){column-gap:56px}

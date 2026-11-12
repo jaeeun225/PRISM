@@ -38,10 +38,15 @@ for key,ko,en in [
 ('range','추천 범위','Recommended range'),('full_map','전체 지도','Full map'),('help_label','지도 조작 안내','Map controls'),
 ('wheel','마우스 휠','Mouse wheel'),('zoom','확대·축소','Zoom in / out'),('drag','드래그','Drag'),('box_zoom','영역 확대','Zoom to area'),('point_click','점 클릭','Click a point'),('details','상세 정보','Show details'),('reset','더블클릭·홈','Double-click / Home'),('full_view','전체 보기','Full map'),
 ('load_error','데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.','Could not load the data. Please try again shortly.'),
+('profile_headline','나의 시그니처 향의 초상','A portrait of your signature scents.'),
+('profile_signatures_title','시그니처 향수','Signature perfumes'),('profile_card_title','나의 프로필 카드','Your profile card'),
+('profile_slot_first','첫 번째 시그니처를 선택하세요','Choose your first signature'),('profile_slot_more','시그니처를 더 추가하세요','Add another signature'),
+('profile_bookmark','이 주소를 저장해 두면 프로필로 돌아올 수 있습니다.','Bookmark this URL to return to your profile.'),
+('profile_empty_heading','나의 시그니처를 한 장의 카드로','Your signature, in a card.'),('profile_empty_hint','향수를 하나 이상 선택하면 프로필이 만들어집니다.','Choose at least one perfume to create your profile.'),
 ('profile_loading','프로필을 준비하는 중...','Preparing your profile…'),('profile_title','내 향수 프로필','My scent profile'),
 ('profile_intro','향수를 최대 3개 골라 나만의 향수 카드를 만들어 보세요.','Choose up to 3 perfumes to create your scent profile.'),
 ('profile_already','검색 결과가 모두 이미 선택된 향수입니다.','All matching perfumes are already selected.'),('profile_candidate','추가할 시그니처 향수','Signature perfume to add'),('profile_add','시그니처에 추가','Add signature'),
-('profile_reset','↻ 처음부터 다시','↻ Start over'),('profile_limit','최대 3개','Up to 3 perfumes'),('profile_orientation','카드 형태','Card format'),('horizontal','가로형','Landscape'),('vertical','세로형','Portrait'),
+('profile_reset','↻ 처음부터 다시','↻ Start over'),('profile_orientation','카드 형태','Card format'),('horizontal','가로형','Landscape'),('vertical','세로형','Portrait'),
 ('profile_empty','시그니처 향수를 하나 이상 추가하면 프로필 카드가 표시됩니다.','Add at least one signature perfume to see your profile card.'),('profile_url','프로필 저장 URL','Profile URL'),('profile_drawing','나만의 향 프로필을 만드는 중...','Creating your scent profile…'),('profile_download','프로필 카드 PNG 다운로드','Download profile card PNG'),
 ('profile_blend','향 계열이 서로 상쇄되는 조합이라 {section} 계열색을 대표색으로 사용했습니다.','These scent families balance one another, so the {section} color represents this profile.'),('profile_unmapped','일부 향수는 휠에 매핑되는 accord가 없어 어코드 요약에서 제외했습니다. 노트는 포함됩니다.','Some perfumes have no mapped accords and are excluded from the accord summary. Their notes are included.'),
 ]: _entry(key,ko,en)
@@ -216,6 +221,7 @@ def install_language_styles():
 html,body,[data-testid="stAppViewContainer"]{{font-family:var(--prism-ui-font),system-ui,sans-serif!important;font-weight:{weight};letter-spacing:{spacing};font-variant-numeric:lining-nums}}
 [data-testid="stAppViewContainer"] *:not([data-testid="stIconMaterial"]):not(.js-plotly-plot,.js-plotly-plot *),[data-baseweb="popover"],[role="tooltip"]{{font-family:var(--prism-ui-font),system-ui,sans-serif!important;font-variant-numeric:lining-nums}}
 .st-key-prism_unified{{font-weight:400}}
+[data-testid=stAppViewContainer] .profile-intro h2{{position:relative;top:{0 if ko else -2}px}}
 [data-testid=stAppViewContainer] .st-key-ui_filter_toggle p{{column-gap:0!important;justify-content:flex-start!important}}
 [data-testid=stAppViewContainer] .st-key-ui_filter_toggle p > :is(em,strong){{font:inherit!important}}
 [data-testid=stAppViewContainer] .st-key-ui_filter_toggle p > em{{flex:none;margin-right:9.140625px;position:relative;top:{-1.5 if ko else -2.5}px}}

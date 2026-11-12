@@ -1,5 +1,8 @@
 """Lazy profile page with validated bookmark URLs; no account/DB storage."""
 from io import BytesIO
+from html import escape
+from base64 import b64encode
+from .i18n import t
 import hashlib
 import zlib
 from http.client import HTTPException
@@ -148,6 +151,136 @@ def reset_profile():
     reset_profile_picker(clear_search=True)
 
 
+
+def signature_row_html(number, row=None):
+    """Presentation only; the adjacent original button still performs deletion."""
+    if row is None:
+        label = t('profile_slot_first' if number == 1 else 'profile_slot_more')
+        return f'<div class="profile-signature-row is-empty"><span class="profile-row-number">{number:02d}</span><span>{label}</span></div>'
+    image = fetch_bottle(row['Image URL'])
+    if image:
+        from PIL import Image
+        from .profile_card import trim_bottle_image
+        with Image.open(BytesIO(image)) as source:
+            thumbnail = trim_bottle_image(source)
+            stream = BytesIO()
+            thumbnail.save(stream, format='PNG')
+            image = stream.getvalue()
+    picture = ('<img alt="" src="data:image/png;base64,' + b64encode(image).decode() + '">' if image
+               else '<span class="profile-bottle-outline" aria-hidden="true"></span>')
+    return (f'<div class="profile-signature-row"><span class="profile-row-number">{number:02d}</span>'
+            + '<div class="profile-row-image">' + picture + '</div><div class="profile-row-text">'
+            + '<span class="profile-row-brand">' + escape(str(row['Brand'])) + '</span>'
+            + '<span class="profile-row-name" title="' + escape(str(row['Name']),quote=True) + '">'
+            + escape(str(row['Name'])) + '</span></div></div>')
+
+
+def profile_empty_html():
+    return ('<div class="profile-empty-card"><span class="profile-bottle-outline" aria-hidden="true"></span>'
+            + '<h4>' + t('profile_empty_heading') + '</h4><p>' + t('profile_empty_hint') + '</p></div>')
+
+
+def profile_surface_styles():
+    st.html("""<style>
+    .st-key-profile_layout{--profile-frame-height:430px;gap:18px!important;color:#1A1A1A}
+    .profile-intro{height:38px;display:flex;align-items:center}
+    [data-testid=stAppViewContainer] .profile-intro h2{margin:0;padding:0;font-size:31px!important;font-weight:400!important;line-height:38px;letter-spacing:.02em;color:#1A1A1A;white-space:nowrap}
+    .st-key-profile_layout [data-testid=stHorizontalBlock]:has(> [data-testid=stColumn] .st-key-profile_controls){column-gap:36px!important}
+    [data-testid=stAppViewContainer] .st-key-profile_controls{padding-top:0!important;gap:12px!important}
+    .profile-section-heading{height:28px;display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+    [data-testid=stAppViewContainer] .profile-section-heading h3{margin:0;padding:0;font-size:22px!important;line-height:28px!important;font-weight:500!important;color:#1A1A1A;letter-spacing:.02em;white-space:nowrap}
+    .profile-section-heading span{color:#6B6B72;font-size:14px;font-weight:400;white-space:nowrap}
+    .st-key-profile_controls [data-testid=stCaptionContainer] p{color:#6B6B72!important}
+    [data-testid=stAppViewContainer] .st-key-profile_search input{padding-left:0!important;background:white!important}
+    [data-testid=stAppViewContainer] .st-key-profile_search [data-testid=stTextInputRootElement]{padding-left:0!important;border-color:transparent transparent #D6D6DA!important}
+    .st-key-profile_search [data-testid=stWidgetLabel]{margin-bottom:-6px}
+    [data-testid=stAppViewContainer] .st-key-profile_search input{height:38px!important;min-height:38px!important;line-height:38px!important;padding-top:0!important;padding-bottom:0!important}
+    [data-testid=stAppViewContainer] .st-key-profile_controls [data-testid=stWidgetLabel] p{font-size:12px!important;color:#6B6B72!important;line-height:20px!important}
+    .st-key-profile_selection_slot,.st-key-profile_selected_chips{gap:0!important;min-width:0}
+    [class*=st-key-profile_signature_row_]{position:relative;gap:0!important;height:62px;min-height:62px;border-bottom:1px solid #D6D6DA}
+    .profile-signature-row{height:61px;display:flex;align-items:center;gap:12px;padding:4px 32px 4px 8px;box-sizing:border-box;min-width:0}
+    .profile-row-number{width:18px;flex:none;font-size:13px;font-weight:500;font-variant-numeric:lining-nums tabular-nums}
+    .profile-row-image{width:34px;height:48px;display:flex;align-items:center;justify-content:center;flex:none}
+    .profile-row-image img{width:100%;height:100%;object-fit:contain}
+    .profile-row-text{display:flex;flex-direction:column;min-width:0;gap:2px}
+    .profile-row-brand{font-size:10px;line-height:14px;letter-spacing:.1em;text-transform:uppercase;color:#6B6B72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .profile-row-name{font-size:15px;line-height:20px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .profile-signature-row.is-empty{color:#6B6B72;font-size:13px;padding-right:8px}
+    .profile-signature-row.is-empty .profile-row-number{color:#1A1A1A}
+    [class*=st-key-profile_signature_row_] [data-testid=stButton]{position:absolute;right:0;top:14px;width:28px!important;max-width:28px}
+    [data-testid=stAppViewContainer] [class*=st-key-profile_signature_row_] button{width:28px!important;min-width:28px!important;height:28px;min-height:28px;padding:0!important;border:0!important;border-radius:0;background:transparent!important;color:#6B6B72}
+    [data-testid=stAppViewContainer] .st-key-profile_reset button{background:transparent!important;border:0!important;border-radius:0;padding:0!important;min-height:28px;color:#1A1A1A!important}
+    .st-key-profile_reset{margin-top:8px}
+    [data-testid=stAppViewContainer] .st-key-profile_url_slot [data-testid=stCaptionContainer] p{font-size:12px!important;line-height:18px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#6B6B72!important}
+    .st-key-profile_url_slot{gap:8px!important}
+    .st-key-profile_url_slot [data-testid=stCode]{background:white!important;border:1px solid #D6D6DA;border-radius:0!important}
+    .st-key-profile_url_slot pre{background:white!important;padding:9px 38px 9px 10px!important;font-size:12px!important;line-height:18px}
+    .st-key-profile_url_slot code{font-size:12px!important;line-height:18px!important}
+    .st-key-profile_url_slot button{opacity:1!important}
+    .profile-bookmark{font-size:12px;line-height:17px;color:#6B6B72;margin:0}
+    .st-key-profile_preview{gap:12px!important;max-width:none!important}
+    .st-key-profile_orientation [data-testid=stWidgetLabel]{display:none}
+    [data-testid=stAppViewContainer] .st-key-profile_orientation [data-testid=stRadioOption]{border-radius:1px!important;min-height:28px;height:28px;padding:3px 12px;border:1px solid #D6D6DA!important;background:white!important}
+    [data-testid=stAppViewContainer] .st-key-profile_orientation [data-testid=stRadioOption][data-selected=true]{background:#F0F0F2!important}
+    .st-key-profile_orientation [data-testid=stRadioOption] p{font-size:13px!important}
+    .profile-empty-formats{height:28px;display:flex;gap:8px;font-size:13px}
+    .profile-empty-formats span{display:flex;align-items:center;padding:3px 12px;border:1px solid #D6D6DA;box-sizing:border-box}
+    .profile-empty-formats span:first-child{background:#F0F0F2}
+    .st-key-profile_card_slot{height:var(--profile-frame-height);min-height:var(--profile-frame-height);box-sizing:border-box;border:1px solid #D6D6DA;padding:12px;display:flex;align-items:center;justify-content:center;gap:0!important}
+    .st-key-profile_card_slot > div{width:100%;min-height:0}
+    [data-testid=stAppViewContainer] .st-key-profile_preview .st-key-profile_card_slot img{max-height:calc(var(--profile-frame-height) - 26px)!important;max-width:100%!important;width:auto!important;height:auto!important;margin:auto;box-shadow:none!important;object-fit:contain}
+    .profile-empty-card{height:calc(var(--profile-frame-height) - 26px);border:1px solid #D6D6DA;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;box-sizing:border-box;text-align:center}
+    .profile-bottle-outline{display:block;position:relative;width:38px;height:48px;border:1px solid #D6D6DA;border-radius:8px;margin:16px 0 8px}
+    .profile-bottle-outline::before{content:'';position:absolute;width:14px;height:20px;border:1px solid #D6D6DA;top:-23px;left:10px}
+    .profile-empty-card h4{font-size:21px;line-height:28px;font-weight:600;margin:0;padding:0;color:#1A1A1A}
+    .profile-empty-card p{font-size:13px;color:#6B6B72;margin:0;line-height:20px}
+    .st-key-profile_download_footer{justify-content:space-between!important;align-items:center!important;gap:12px!important;width:100%}
+    .st-key-profile_download_footer > div{width:fit-content!important;flex:none}
+    .st-key-profile_download_footer [data-testid=stCaptionContainer] p{font-size:12px;color:#6B6B72!important;white-space:nowrap}
+    [data-testid=stAppViewContainer] .st-key-profile_layout [data-testid=stDownloadButton] button{border-radius:1px!important;min-height:32px;padding:4px 14px;border:1px solid #1A1A1A!important;background:#1A1A1A!important;color:white!important}
+    [data-testid=stAppViewContainer] .st-key-profile_layout [data-testid=stDownloadButton] button p{color:inherit!important;font-size:13px}
+    [data-testid=stAppViewContainer] .st-key-profile_layout [data-testid=stDownloadButton] button:disabled{border-color:#D6D6DA!important;background:#F0F0F2!important;color:#6B6B72!important;opacity:1}
+
+    .st-key-profile_layout{gap:23px!important}
+    [data-testid=stMainBlockContainer]:has(.st-key-profile_layout){padding-bottom:16px!important}
+    .st-key-profile_card_slot [data-testid=stElementContainer]:has([data-testid=stImage]) > div{display:flex;justify-content:center;align-items:center}
+
+    @media(min-width:901px){
+      .st-key-profile_layout [data-testid=stColumn]:has(.st-key-profile_controls){flex:450 1 0%!important;width:0!important}
+      .st-key-profile_layout [data-testid=stColumn]:has(.st-key-profile_preview){flex:790 1 0%!important;width:0!important}
+    }
+    [class*=st-key-profile_signature_row_] > [class*=st-key-profile_remove_]{position:absolute!important;top:17px!important;right:0!important;width:28px!important;height:28px!important}
+    [class*=st-key-profile_signature_row_] [data-testid=stButton]{position:static!important;top:auto!important;right:auto!important}
+    .st-key-profile_orientation [data-testid=stRadioGroup]{margin:0!important;padding:0!important;height:28px;min-height:28px}
+    .st-key-profile_orientation [data-testid=stRadio]{gap:0!important}
+    .st-key-profile_card_slot [data-testid=stImage]{display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important}
+    .st-key-profile_url_slot [data-testid=stCode] > div{opacity:1!important;visibility:visible!important;top:50%!important;right:6px!important;transform:translateY(-50%)!important}
+    .st-key-profile_url_slot [aria-label="Copy to clipboard"]{height:28px!important;min-height:28px!important;width:24px!important;padding:0!important;border:0!important;background:transparent!important;color:#6B6B72!important}
+    /* Search-result picker: profile-only presentation; native widget/state unchanged. */
+    .st-key-profile_controls:has(.st-key-profile_reset) .st-key-profile_url_slot{margin-top:2px}
+    .st-key-profile_search_results{gap:14px!important;margin-bottom:2px}
+    .st-key-profile_search_results [data-testid=stSelectbox]{display:flex;flex-direction:column;gap:8px}
+    .st-key-profile_search_results [data-testid=stWidgetLabel]{margin:0!important;min-height:20px;padding:0}
+    .st-key-profile_search_results .react-aria-ComboBox > [role=group]{background:#FFFFFF!important;border:0!important;border-bottom:1px solid #D6D6DA!important;border-radius:0!important;box-shadow:none!important;padding-left:0!important;min-height:38px}
+    .st-key-profile_search_results .react-aria-ComboBox > [role=group]:focus-within{border-bottom-color:#1A1A1A!important}
+    .st-key-profile_search_results input[role=combobox]{padding-left:0!important;background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;height:38px;min-height:38px}
+    .st-key-profile_search_results input[role=combobox]::placeholder{color:#6B6B72!important;opacity:1}
+    .st-key-profile_search_results .react-aria-ComboBox button{background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;color:#6B6B72!important}
+    .st-key-profile_search_results .react-aria-ComboBox button svg{width:18px;height:18px}
+    body:has(.st-key-profile_layout) [data-testid=stSelectboxVirtualDropdown]{background:#FFFFFF!important;border:1px solid #D6D6DA!important;border-radius:0!important;box-shadow:none!important}
+    body:has(.st-key-profile_layout) [data-testid=stSelectboxVirtualDropdown] [role=listbox]{background:#FFFFFF!important;border-radius:0!important}
+    body:has(.st-key-profile_layout) [data-testid=stSelectboxVirtualDropdown] [role=option]{background:#FFFFFF!important;color:#1A1A1A!important;font-family:var(--prism-ui-font),system-ui,sans-serif!important;font-weight:400!important;border-radius:0!important}
+    body:has(.st-key-profile_layout) [data-testid=stSelectboxVirtualDropdown] [role=option]:is(:hover,[data-hovered],[data-focused],[aria-selected=true]){background:#F0F0F2!important}
+    [data-testid=stAppViewContainer] .st-key-profile_layout .st-key-profile_add button{border:1px solid #D6D6DA!important;border-radius:0!important;background:#FFFFFF!important;color:#1A1A1A!important;height:28px!important;min-height:28px!important;padding:0 12px!important;box-shadow:none!important}
+    [data-testid=stAppViewContainer] .st-key-profile_layout .st-key-profile_add button p{font-size:13px!important;line-height:20px!important;color:inherit!important}
+    [data-testid=stAppViewContainer] .st-key-profile_layout .st-key-profile_add button:hover:not(:disabled){background:#F0F0F2!important}
+    [data-testid=stAppViewContainer] .st-key-profile_layout .st-key-profile_add button:disabled{color:#6B6B72!important;border-color:#D6D6DA!important;background:#FFFFFF!important}
+    [data-testid=stAppViewContainer] .st-key-profile_layout .st-key-profile_add button:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
+    [data-testid=stAppViewContainer] .st-key-profile_layout .st-key-profile_add button:focus-visible{outline:2px solid #1A1A1A!important;outline-offset:2px}
+    @media(max-width:900px){.st-key-profile_layout{--profile-frame-height:380px}}
+    </style>""")
+
+
 def render_profile(*, settings_factory, recommendation_loader, recommendation_logic,
                    map_artifact_loader, map_logic, map_fallback_loader, catalog_loader):
     try:
@@ -204,12 +337,13 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
       .st-key-profile_preview img {max-height:none!important}
     }
     </style>""")
+    profile_surface_styles()
     values = restore_selection(set(catalog['_id']))
     with st.container(key='profile_layout'):
-        controls, preview = st.columns([1, 1.15], gap='large')
+        st.html('<div class="profile-intro"><h2>'+t('profile_headline')+'</h2></div>')
+        controls, preview = st.columns([450, 790], gap='large')
         with controls, st.container(key='profile_controls'):
-            st.subheader('내 향수 프로필', anchor=False)
-            st.caption('향수를 최대 3개 골라 나만의 향수 카드를 만들어 보세요.')
+            st.html('<div class="profile-section-heading"><h3>'+t('profile_signatures_title')+'</h3><span>'+str(len(values))+' / 3</span></div>')
             query = st.text_input('향수 이름 또는 브랜드 검색', key='profile_search',
                                   placeholder='향수 이름 또는 브랜드 입력 후 Enter', on_change=reset_profile_picker)
             index = profile_label_index(settings_key, recommendation_logic, catalog)
@@ -240,22 +374,34 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
             with st.container(key='profile_selection_slot'):
                 if values:
                     selected = catalog.set_index('_id').loc[values]
-                    with st.container(horizontal=True, gap='small', key='profile_selected_chips'):
-                        for identifier in values:
-                            st.button(labels[identifier] + ' ×', key=f'profile_remove_{identifier}',
-                                      use_container_width=False, on_click=remove_signature, args=(identifier,))
+                with st.container(key='profile_selected_chips', gap=None):
+                    for position in range(MAX_SIGNATURES):
+                        with st.container(key=f'profile_signature_row_{position}', gap=None):
+                            if position < len(values):
+                                identifier = values[position]
+                                st.html(signature_row_html(position + 1, selected.loc[identifier]))
+                                st.button('×', key=f'profile_remove_{identifier}',
+                                          use_container_width=False, on_click=remove_signature, args=(identifier,))
+                            else:
+                                st.html(signature_row_html(position + 1))
+                if values:
                     st.button('↻ 처음부터 다시', key='profile_reset', on_click=reset_profile)
-            st.caption('최대 3개')
             url_slot = st.container(key='profile_url_slot')
         with preview, st.container(key='profile_preview'):
+            st.html('<div class="profile-section-heading"><h3>'+t('profile_card_title')+'</h3></div>')
             with st.container(key='profile_orientation_slot'):
                 if values:
-                    layout = st.radio('카드 형태', ['가로형', '세로형'], horizontal=True, key='profile_orientation')
+                    layout = st.radio('카드 형태', ['가로형', '세로형'], horizontal=True, key='profile_orientation', label_visibility='collapsed')
+                else:
+                    st.html('<div class="profile-empty-formats" aria-disabled="true"><span>'+t('horizontal')+'</span><span>'+t('vertical')+'</span></div>')
             status_slot = st.container(key='profile_card_status', gap=None)
             card_slot = st.container(key='profile_card_slot', gap=None)
             if not values:
                 st.session_state.profile_preview_key = None
-                card_slot.caption('시그니처 향수를 하나 이상 추가하면 프로필 카드가 표시됩니다.')
+                card_slot.html(profile_empty_html())
+                with st.container(horizontal=True, key='profile_download_footer'):
+                    st.caption('PNG · '+t('horizontal'))
+                    st.download_button('프로필 카드 PNG 다운로드', data=b'', file_name='prism_profile_horizontal.png', mime='image/png', type='primary', disabled=True, on_click='ignore')
                 url_slot.empty()
                 return
             orientation = 'horizontal' if layout == '가로형' else 'vertical'
@@ -272,6 +418,7 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
                 st.caption('프로필 저장 URL')
                 st.code(urlunsplit((address.scheme, address.netloc, address.path, query_string, '')),
                         language=None, wrap_lines=True)
+                st.html('<p class="profile-bookmark">'+t('profile_bookmark')+'</p>')
             try:
                 with status_slot, st.spinner('나만의 향 프로필을 만드는 중...'):
                     notes, angles = profile_context(settings_key, map_logic, map_artifact_loader, map_fallback_loader)
@@ -293,8 +440,10 @@ def render_profile(*, settings_factory, recommendation_loader, recommendation_lo
                 return
             image_slot.image(BytesIO(png), use_container_width=True)
             st.session_state.profile_preview_key = preview_key
-            st.download_button('프로필 카드 PNG 다운로드', data=png, file_name=f'prism_profile_{orientation}.png',
-                               mime='image/png', type='primary', on_click='ignore')
+            with st.container(horizontal=True, key='profile_download_footer'):
+                st.caption('PNG · '+t('horizontal' if orientation == 'horizontal' else 'vertical'))
+                st.download_button('프로필 카드 PNG 다운로드', data=png, file_name=f'prism_profile_{orientation}.png',
+                                   mime='image/png', type='primary', on_click='ignore')
             if profile['color_source'] == 'dominant_section':
                 st.caption(f"향 계열이 서로 상쇄되는 조합이라 {profile['color_section']} 계열색을 대표색으로 사용했습니다.")
             if profile['unmapped_count']:

@@ -17,19 +17,19 @@ def _entry(key, ko, en):
 
 for key,ko,en in [
 ('nav_map','향 지도','Scent Map'),('nav_profile','내 프로필','My Profile'),
-('search','향수·브랜드 검색','Search perfume or brand'),('placeholder','향수·브랜드 입력 후 Enter','Enter perfume or brand, then press Enter'),
-('plotly_zoom','영역 확대','Zoom'),('plotly_pan','이동','Pan'),('plotly_in','확대','Zoom in'),('plotly_out','축소','Zoom out'),('plotly_reset','범위 초기화','Reset axes'),('plotly_fullscreen','전체 화면','Fullscreen'),('choose_option','선택하세요','Choose an option'),('base','기준 향수','Base perfume'),('filter','어코드 필터','Accord filter'),
+('search','향수·브랜드 검색','Search perfume or brand'),('placeholder','입력 후 Enter','Type, then press Enter'),
+('plotly_zoom','영역 확대','Zoom'),('plotly_pan','이동','Pan'),('plotly_in','확대','Zoom in'),('plotly_out','축소','Zoom out'),('plotly_reset','범위 초기화','Reset axes'),('plotly_fullscreen','전체 화면','Fullscreen'),('choose_option','선택하세요','Select a perfume'),('base','기준 향수','Base perfume'),('filter','어코드 필터','Accord filter'),
 ('shown','{shown:,} / {total:,}개 표시','{shown:,} of {total:,} shown'),
 ('selected_count','{count}개 어코드 선택','{count} accords selected'),('select_all','전체 선택','Select all'),('clear_all','전체 해제','Clear all'),('apply','적용','Apply'),
 ('pending','변경 사항이 있습니다 — 적용을 눌러주세요','You have unapplied changes — select Apply'),('or_hint','OR 조건 · 미선택 시 전체 표시','Match any selected accord · none means all'),('section_all','섹션 전체','Entire section'),
 ('other_section','기타 (지도 미반영)','Other (not mapped)'),('map_loading','지도를 불러오는 중…','Loading the map…'),
 ('no_results','일치하는 향수가 없습니다.','No matching perfumes.'),('matches','{count:,}개 일치 — 목록에서 선택하세요','{count:,} matches — choose from the list'),
 ('filter_empty','조건에 맞는 향수가 없습니다','No perfumes match these filters'),('filter_note','필터는 배경 분포에 적용됩니다. 기준 향수와 추천 Top 10은 비교를 위해 유지합니다.','Filters affect the background. The base perfume and Top 10 remain visible.'),
-('atlas_headline','나만의 향 아틀라스','A personal atlas of scent.'),('details_title','향수 정보','Perfume Details'),
-('footer_base','기준 향수','BASE'),('footer_selected','선택한 향수','SELECTED'),('footer_hint','점을 눌러 향수를 확인하세요','Select a dot to see its fragrance'),
-('map_title','나의 향 지도','Your scent map'),('map_highlights','추천 {count}개 강조','{count} recommendations highlighted'),('map_fragrance_count','{count:,}개 향수','{count:,} fragrances'),
+('atlas_headline','나의 다음 시그니처가 기다리는 곳','Where your next signature awaits'),('details_title','향수 정보','Perfume Details'),
+('footer_base','기준 향수','BASE'),('footer_selected','선택한 향수','SELECTED'),('footer_hint','점을 눌러 향수를 확인하세요','Click a dot to see its fragrance'),
+('map_title','향 지도','Scent map'),('map_highlights','추천 {count}개 강조','{count} recommendations highlighted'),('map_fragrance_count','{count:,}개 향수','{count:,} fragrances'),
 ('recommend_title','추천 Top 10','Top 10 Recommendations'),('base_caption','기준 · {name}','Base · {name}'),
-('choose_base','향수를 검색하고 기준 향수를 선택하면 추천 Top 10이 표시됩니다.','Search for a perfume and choose a base to see your Top 10.'),
+('choose_base','기준 향수를 고르면 추천 Top 10이 여기에 나타납니다.','Choose a base perfume to see your Top 10 here.'),
 ('rank','추천 {rank}위','Rank {rank}'),('similarity','유사도 {score:.4f}','Similarity {score:.4f}'),('selected_perfume','선택한 향수','Selected perfume'),
 ('top','탑','Top'),('middle','미들','Middle'),('base_note','베이스','Base'),
 ('heart_add','프로필에 추가','Add to profile'),('heart_added','프로필에 등록됨','In your profile'),('heart_full','시그니처 최대 3개','Maximum 3 signatures'),
@@ -83,8 +83,12 @@ class _LocalizedDelta(AbstractContextManager):
             if name in {'caption','subheader','header','title','info','warning','error','spinner','button','text_input','selectbox','radio','download_button','markdown'}:
                 if args: args = (literal(args[0]), *args[1:])
                 for field in ('placeholder','help'):
-                    if field in kwargs: kwargs[field] = literal(kwargs[field])
-                if name == 'selectbox': kwargs.setdefault('placeholder', t('choose_option'))
+                    if field in kwargs:
+                        # Keep the profile's existing shared-key copy unchanged.
+                        if name == 'text_input' and field == 'placeholder' and kwargs[field] == '향수 이름 또는 브랜드 입력 후 Enter':
+                            kwargs[field] = '향수·브랜드 입력 후 Enter' if language() == 'ko' else 'Enter perfume or brand, then press Enter'
+                        else: kwargs[field] = literal(kwargs[field])
+                if name == 'selectbox': kwargs.setdefault('placeholder', '선택하세요' if language() == 'ko' else 'Choose an option')
                 if name == 'error' and args:
                     args = (t('load_error'), *args[1:])
             result = target(*args, **kwargs)
@@ -212,6 +216,7 @@ def install_language_styles():
 html,body,[data-testid="stAppViewContainer"]{{font-family:var(--prism-ui-font),system-ui,sans-serif!important;font-weight:{weight};letter-spacing:{spacing};font-variant-numeric:lining-nums}}
 [data-testid="stAppViewContainer"] *:not([data-testid="stIconMaterial"]):not(.js-plotly-plot,.js-plotly-plot *),[data-baseweb="popover"],[role="tooltip"]{{font-family:var(--prism-ui-font),system-ui,sans-serif!important;font-variant-numeric:lining-nums}}
 .st-key-prism_unified{{font-weight:400}}
+[data-testid="stAppViewContainer"] .st-key-prism_unified .ui-atlas-intro{{padding-top:{12 if ko else 10.5}px}}
 [data-testid="stAppViewContainer"] .st-key-prism_unified [data-testid="stWidgetLabel"] p{{font-weight:600!important}}
 .st-key-prism_nav_tabs button p{{font-size:19px!important;letter-spacing:.04em;font-weight:600!important;color:#4b4f6b}}
 .st-key-prism_nav_tabs button[kind="primary"] p{{color:#25283c}}
